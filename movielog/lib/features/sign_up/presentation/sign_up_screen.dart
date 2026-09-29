@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:movielog/app/app_router.dart';
 import 'package:movielog/core/theme/app_theme.dart';
 import 'package:movielog/features/rating/presentation/widgets/rating_practice_card.dart';
 import 'package:movielog/features/sign_up/presentation/widgets/movie_log_text_form_field.dart';
@@ -57,10 +59,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     FocusScope.of(context).unfocus();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${_nicknameController.text.trim()}님, 입력을 확인했어요.'),
-      ),
+      SnackBar(content: Text('${_nicknameController.text.trim()}님, 가입을 환영해요!')),
     );
+    // go: 회원가입 화면을 스택에서 지워 홈에서 뒤로 가도 돌아오지 않는다.
+    context.go(AppRoutes.home);
   }
 
   void _saveRating() {
