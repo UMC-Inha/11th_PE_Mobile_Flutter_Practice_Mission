@@ -118,7 +118,7 @@ void main() {
 
     await tester.tap(find.byKey(applyFilterButtonKey));
     await tester.pumpAndSettle();
-    expect(find.text('SF · 2편'), findsOneWidget);
+    expect(find.text('SF · 1편'), findsOneWidget);
 
     // 아무것도 고르지 않고 확인하면 전체 목록으로 돌아간다.
     await tester.tap(find.byKey(filterButtonKey));

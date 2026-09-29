@@ -24,7 +24,7 @@ class Movie {
   final String overview;
 }
 
-const movieGenres = ['로맨스', 'SF', '드라마', '스릴러', '판타지'];
+const movieGenres = ['로맨스', '액션', 'SF', '드라마', '스릴러', '판타지'];
 
 const mockMovies = <Movie>[
   Movie(
@@ -38,14 +38,14 @@ const mockMovies = <Movie>[
     overview: '별이 가장 잘 보이는 밤, 서로 다른 꿈을 가진 두 사람이 한 망원경 앞에서 만난다.',
   ),
   Movie(
-    id: 'abyss-walker',
-    title: '어비스 워커',
-    genre: 'SF',
+    id: 'mission-improbable',
+    title: '미션: 임프로버블',
+    genre: '액션',
     year: 2025,
     posterPath: 'assets/images/posters/poster_abyss_walker.jpg',
-    runtimeMinutes: 132,
+    runtimeMinutes: 126,
     averageRating: 4.1,
-    overview: '심해 탐사선의 마지막 대원이 아무도 가 보지 못한 해구의 바닥으로 내려간다.',
+    overview: '돌아온 요원 맥스 스틸러. 이번 임무는 폭발보다 웃음이 더 크게 터진다.',
   ),
   Movie(
     id: 'echoes-of-the-void',
