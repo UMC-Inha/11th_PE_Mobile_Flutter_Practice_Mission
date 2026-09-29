@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:movielog/app/movie_log_app.dart';
 
 void main() {
-  runApp(
-    const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(body: Center(child: Text('Flutter 시작!'))),
-    ),
-  );
+  runApp(const MovieLogApp());
 }
