@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:movielog/core/services/fake_movie_service.dart';
+import 'package:movielog/core/storage/genre_preference.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movielog/features/home/presentation/home_screen.dart';
 import 'package:movielog/features/movies/presentation/movie_detail_screen.dart';
@@ -25,7 +27,11 @@ abstract final class AppRoutes {
 /// 그래서 회원가입·홈 화면에서는 뒤로 가기가 동작하지 않는다.
 /// 홈 · 영화 · 마이페이지는 StatefulShellRoute.indexedStack으로 묶어
 /// 탭마다 Navigation 상태(스크롤, 상세 화면 스택)를 보존한다.
-GoRouter createAppRouter({String initialLocation = AppRoutes.start}) {
+GoRouter createAppRouter({
+  String initialLocation = AppRoutes.start,
+  MovieService movieService = const FakeMovieService(),
+  MoviePreferences? preferences,
+}) {
   return GoRouter(
     initialLocation: initialLocation,
     routes: [
@@ -59,6 +65,15 @@ GoRouter createAppRouter({String initialLocation = AppRoutes.start}) {
                 name: 'movies',
                 // Query Parameter: /movies?genres=SF,드라마
                 builder: (context, state) => MovieListScreen(
+                  service: movieService,
+                  preferences: preferences,
+                  restoreSavedGenre: !state.uri.queryParameters.containsKey(
+                    'genres',
+                  ),
+                  initialMode: MovieLoadMode.values.firstWhere(
+                    (mode) => mode.name == state.uri.queryParameters['mode'],
+                    orElse: () => MovieLoadMode.success,
+                  ),
                   selectedGenres: parseGenres(
                     state.uri.queryParameters['genres'],
                   ),

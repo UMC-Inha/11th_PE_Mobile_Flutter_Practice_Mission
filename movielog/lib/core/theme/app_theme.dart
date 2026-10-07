@@ -12,6 +12,7 @@ abstract final class AppTheme {
   static final light = ThemeData(
     useMaterial3: true,
     fontFamily: 'Manrope',
+    fontFamilyFallback: const ['Apple SD Gothic Neo', 'Noto Sans KR'],
     colorScheme: ColorScheme.fromSeed(
       seedColor: AppColors.primary,
       surface: AppColors.surface,

@@ -1,3 +1,5 @@
+import 'support.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/app/app_router.dart';
@@ -33,8 +35,10 @@ void main() {
   });
 
   testWidgets('시작 → 회원가입 → 홈으로 가고, 홈에서는 뒤로 갈 곳이 없다', (tester) async {
-    await tester.pumpWidget(const MovieLogApp());
+    await tester.pumpWidget(MovieLogApp(preferences: MemoryMoviePreferences()));
     await tester.tap(find.byKey(startButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
 
     expect(find.text('가입하기'), findsOneWidget);
@@ -50,6 +54,8 @@ void main() {
     await tester.pump();
     await tester.ensureVisible(find.byKey(signUpButtonKey));
     await tester.tap(find.byKey(signUpButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
 
     expect(find.text('지금 많이 보는 영화'), findsOneWidget);
@@ -62,7 +68,10 @@ void main() {
 
   testWidgets('이메일에 @만 있으면 가입 버튼이 켜지지 않는다', (tester) async {
     await tester.pumpWidget(
-      const MovieLogApp(initialLocation: AppRoutes.signUp),
+      MovieLogApp(
+        preferences: MemoryMoviePreferences(),
+        initialLocation: AppRoutes.signUp,
+      ),
     );
     await tester.enterText(find.byKey(nicknameFieldKey), '무비러버');
     await tester.enterText(find.byKey(emailFieldKey), 'a@b');
@@ -77,26 +86,44 @@ void main() {
   });
 
   testWidgets('홈 카드 → 상세(Path Parameter) → 뒤로 가면 홈', (tester) async {
-    await tester.pumpWidget(const MovieLogApp(initialLocation: AppRoutes.home));
+    await tester.pumpWidget(
+      MovieLogApp(
+        preferences: MemoryMoviePreferences(),
+        initialLocation: AppRoutes.home,
+      ),
+    );
     await tester.tap(find.byKey(const Key('featured-under-the-starlight')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
 
     expect(find.text('별빛 아래 우리'), findsOneWidget);
     expect(find.text('평균 평점'), findsOneWidget);
 
     await tester.tap(find.byType(BackButton));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
     expect(find.text('지금 많이 보는 영화'), findsOneWidget);
   });
 
   testWidgets('NavigationBar로 탭을 전환한다', (tester) async {
-    await tester.pumpWidget(const MovieLogApp(initialLocation: AppRoutes.home));
+    await tester.pumpWidget(
+      MovieLogApp(
+        preferences: MemoryMoviePreferences(),
+        initialLocation: AppRoutes.home,
+      ),
+    );
 
     await tester.tap(find.text('영화'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
     expect(find.text('전체 영화 6편'), findsOneWidget);
 
     await tester.tap(find.text('마이페이지').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
     expect(find.text('즐겨찾기한 영화'), findsOneWidget);
 
@@ -106,10 +133,15 @@ void main() {
 
   testWidgets('BottomSheet에서 고른 장르는 확인을 눌러야 목록에 반영된다', (tester) async {
     await tester.pumpWidget(
-      const MovieLogApp(initialLocation: AppRoutes.movies),
+      MovieLogApp(
+        preferences: MemoryMoviePreferences(),
+        initialLocation: AppRoutes.movies,
+      ),
     );
 
     await tester.tap(find.byKey(filterButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('genreCheckbox-SF')));
     await tester.pump();
@@ -117,30 +149,46 @@ void main() {
     expect(find.text('전체 영화 6편'), findsOneWidget);
 
     await tester.tap(find.byKey(applyFilterButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
     expect(find.text('SF · 1편'), findsOneWidget);
 
     // 아무것도 고르지 않고 확인하면 전체 목록으로 돌아간다.
     await tester.tap(find.byKey(filterButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('genreCheckbox-SF')));
     await tester.tap(find.byKey(applyFilterButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
     expect(find.text('전체 영화 6편'), findsOneWidget);
   });
 
   testWidgets('Query Parameter로 장르 필터를 연다', (tester) async {
     await tester.pumpWidget(
-      MovieLogApp(initialLocation: moviesLocation({'드라마'})),
+      MovieLogApp(
+        preferences: MemoryMoviePreferences(),
+        initialLocation: moviesLocation({'드라마'}),
+      ),
     );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
     expect(find.text('드라마 · 1편'), findsOneWidget);
   });
 
   testWidgets('상세: 즐겨찾기 Snackbar와 평점 Dialog', (tester) async {
     await tester.pumpWidget(
-      MovieLogApp(initialLocation: AppRoutes.movieDetail('night-shadows')),
+      MovieLogApp(
+        preferences: MemoryMoviePreferences(),
+        initialLocation: AppRoutes.movieDetail('night-shadows'),
+      ),
     );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(favoriteButtonKey));
@@ -154,6 +202,8 @@ void main() {
 
     await tester.ensureVisible(find.byKey(rateButtonKey));
     await tester.tap(find.byKey(rateButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
     expect(find.byType(MovieRatingDialog), findsOneWidget);
     expect(
@@ -175,6 +225,8 @@ void main() {
     await tester.tap(dialogStar(4));
     await tester.pump();
     await tester.tap(find.byKey(saveRatingButtonKey));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1100));
     await tester.pumpAndSettle();
     expect(find.byType(MovieRatingDialog), findsNothing);
     expect(find.textContaining('내 평점'), findsOneWidget);
