@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# 인증 영상의 중간 렌더링/캡처 프레임
+/evidence/frames/
+/evidence/live-frames/
