@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 import 'package:movielog/models/movie.dart';
 import 'package:movielog/movie_log_app.dart';
@@ -43,6 +45,11 @@ ElevatedButton _submitButton(WidgetTester tester) {
 }
 
 void main() {
+  setUp(() {
+    // 테스트에서는 실제 저장소 대신 메모리 저장소를 사용합니다.
+    SharedPreferencesAsyncPlatform.instance = InMemorySharedPreferencesAsync.empty();
+  });
+
   testWidgets('앱을 실행하면 시작 화면이 표시되고, 시작하기를 누르면 뒤로가기 없는 회원가입 화면으로 이동한다',
       (WidgetTester tester) async {
     AppRouter.router.go('/start');

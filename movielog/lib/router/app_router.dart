@@ -38,7 +38,7 @@ class AppRouter {
           GoRoute(
             path: '/movies',
             builder: (context, state) => MovieListScreen(
-              selectedGenre: state.uri.queryParameters['genre'] ?? allGenreLabel,
+              selectedGenre: state.uri.queryParameters['genre'],
             ),
           ),
           GoRoute(
