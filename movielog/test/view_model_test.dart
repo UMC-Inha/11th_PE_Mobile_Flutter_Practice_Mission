@@ -130,6 +130,10 @@ void main() {
       await vm.selectGenres([28, 12]);
       expect(service.discoverCalls.last.genreIds, [28, 12]);
       expect(vm.selectionLabel, '액션, 모험');
+      // 카드에는 TMDB 첫 장르(드라마)보다 고른 장르(모험)를 먼저 보여준다.
+      expect(vm.primaryGenreName(movie(9, genreIds: const [18, 12])), '모험');
+      await vm.selectGenre(null);
+      expect(vm.primaryGenreName(movie(9, genreIds: const [18, 12])), '드라마');
     });
 
     test('Discover 요청 중에는 장르를 바꾸지 못한다', () async {

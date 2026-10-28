@@ -52,7 +52,7 @@ class CachingTmdbService implements TmdbMovieService {
       }
       final cached = _cache[key];
       if (cached == null) throw StateError('녹화되지 않은 요청: $key');
-      onReplay?.call(key, cached);
+      onReplay?.call(key, cached is _Failure ? cached.error : cached);
       if (cached is _Failure) throw cached.error;
       return cached as T;
     }

@@ -59,8 +59,11 @@ class MovieListViewModel extends ChangeNotifier {
     return null;
   }
 
-  /// 카드에 보여줄 첫 장르 이름
+  /// 카드에 보여줄 장르 이름. 장르로 걸러 봤다면 고른 장르를 먼저 보여준다.
   String? primaryGenreName(TmdbMovieDto movie) {
+    for (final id in selectedGenreIds) {
+      if (movie.genreIds.contains(id)) return genreName(id);
+    }
     for (final id in movie.genreIds) {
       final name = genreName(id);
       if (name != null) return name;
