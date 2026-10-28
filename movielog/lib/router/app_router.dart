@@ -1,6 +1,8 @@
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
-import '../models/movie.dart';
+import '../data/models/tmdb_movie_dto.dart';
+import '../data/services/tmdb_movie_service.dart';
 import '../screens/detail/movie_detail_screen.dart';
 import '../screens/home/home_screen.dart';
 import '../screens/main/main_screen.dart';
@@ -8,6 +10,8 @@ import '../screens/movies/movie_list_screen.dart';
 import '../screens/profile/profile_screen.dart';
 import '../screens/signup/sign_up_screen.dart';
 import '../start_screen.dart';
+import '../view_models/movie_home_view_model.dart';
+import '../view_models/movie_list_view_model.dart';
 
 class AppRouter {
   AppRouter._();
@@ -31,14 +35,23 @@ class AppRouter {
           );
         },
         routes: [
+          // 화면별 ViewModel은 각 Route에서 생성하고, 생성 직후 첫 요청을 한 번만 보냅니다.
           GoRoute(
             path: '/home',
-            builder: (context, state) => const HomeScreen(),
+            builder: (context, state) => ChangeNotifierProvider<MovieHomeViewModel>(
+              create: (context) => MovieHomeViewModel(
+                context.read<TmdbMovieService>(),
+              )..loadPopular(),
+              child: const HomeScreen(),
+            ),
           ),
           GoRoute(
             path: '/movies',
-            builder: (context, state) => MovieListScreen(
-              selectedGenre: state.uri.queryParameters['genre'],
+            builder: (context, state) => ChangeNotifierProvider<MovieListViewModel>(
+              create: (context) => MovieListViewModel(
+                context.read<TmdbMovieService>(),
+              )..loadInitial(),
+              child: const MovieListScreen(),
             ),
           ),
           GoRoute(
@@ -52,8 +65,10 @@ class AppRouter {
         builder: (context, state) {
           final movieId = int.tryParse(state.pathParameters['movieId'] ?? '');
 
-          final extraMovie = state.extra as Movie?;
-          final movie = extraMovie?.id == movieId ? extraMovie : findMovieById(movieId);
+          // 목록·홈 카드가 extra로 넘긴 TMDB 영화를 사용합니다.
+          // TODO(TMDB 상세 API): extra 없이 URL로 직접 진입하면 /movie/{id}로 조회합니다.
+          final extra = state.extra;
+          final movie = extra is TmdbMovieDto && extra.id == movieId ? extra : null;
 
           return MovieDetailScreen(movie: movie);
         },

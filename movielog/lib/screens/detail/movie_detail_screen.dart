@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../models/movie.dart';
+import '../../data/models/tmdb_movie_dto.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../widgets/common_app_bar.dart';
@@ -14,8 +14,8 @@ import 'widgets/share_bottom_sheet.dart';
 class MovieDetailScreen extends StatefulWidget {
   const MovieDetailScreen({super.key, required this.movie});
 
-  /// Router가 Path Parameter(또는 extra)로 찾아서 전달한 영화입니다. 없으면 null입니다.
-  final Movie? movie;
+  /// Router가 extra로 전달한 TMDB 영화입니다. Path Parameter의 id와 맞지 않거나 없으면 null입니다.
+  final TmdbMovieDto? movie;
 
   @override
   State<MovieDetailScreen> createState() => _MovieDetailScreenState();
@@ -52,7 +52,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
       );
   }
 
-  void _toggleFavorite(Movie movie) {
+  void _toggleFavorite(TmdbMovieDto movie) {
     setState(() => _isFavorite = !_isFavorite);
     _showSnackBar(
       _isFavorite
@@ -61,10 +61,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     );
   }
 
-  Future<void> _openRatingDialog() async {
+  Future<void> _openRatingDialog(TmdbMovieDto movie) async {
     final rating = await showDialog<double>(
       context: context,
-      builder: (dialogContext) => RatingDialog(initialRating: _myRating ?? 0),
+      // TMDB id를 평점 Dialog에 전달합니다. (배열 index가 아닌 영화 식별값)
+      builder: (dialogContext) => RatingDialog(
+        movieId: movie.id,
+        initialRating: _myRating ?? 0,
+      ),
     );
     if (!mounted || rating == null) return;
 
@@ -127,7 +131,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                   children: [
                     MovieDetailHeader(movie: movie, myRating: _myRating),
                     const Divider(height: 1, color: AppColors.divider),
-                    MovieSynopsis(synopsis: movie.synopsis),
+                    MovieSynopsis(synopsis: movie.overview),
                   ],
                 ),
               ),
@@ -135,7 +139,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             DetailActionBar(
               isFavorite: _isFavorite,
               onFavoritePressed: () => _toggleFavorite(movie),
-              onRatePressed: _openRatingDialog,
+              onRatePressed: () => _openRatingDialog(movie),
             ),
           ],
         ),

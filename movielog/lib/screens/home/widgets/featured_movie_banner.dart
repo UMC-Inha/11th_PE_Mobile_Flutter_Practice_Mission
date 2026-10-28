@@ -1,23 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../models/movie.dart';
+import '../../../data/models/tmdb_movie_dto.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_text_styles.dart';
+import '../../../widgets/tmdb_movie_format.dart';
+import '../../../widgets/tmdb_poster_image.dart';
 
-/// 홈 상단의 추천 신작 카드입니다. 카드나 상세보기 버튼을 누르면 상세로 push합니다.
+/// 홈 상단의 추천 영화 카드입니다. 카드나 상세보기 버튼을 누르면 상세로 push합니다.
 class FeaturedMovieBanner extends StatelessWidget {
   const FeaturedMovieBanner({super.key, required this.movie});
 
-  final Movie movie;
+  final TmdbMovieDto movie;
 
-  // Path Parameter로 ID를 전달하고, 이미 가진 Movie 객체는 extra로 함께 넘깁니다.
+  // Path Parameter로 TMDB ID를 전달하고, 이미 가진 DTO는 extra로 함께 넘깁니다.
   void _openDetail(BuildContext context) {
     context.push('/movies/${movie.id}', extra: movie);
   }
 
   @override
   Widget build(BuildContext context) {
+    final releaseYear = movie.releaseYear;
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _openDetail(context),
@@ -30,11 +34,10 @@ class FeaturedMovieBanner extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Image.asset(
-                  movie.posterAsset,
-                  fit: BoxFit.cover,
-                  alignment: movie.posterAlignment,
-                  semanticLabel: '${movie.title} 포스터',
+                TmdbPosterImage(
+                  posterPath: movie.posterPath,
+                  width: double.infinity,
+                  height: double.infinity,
                 ),
                 const DecoratedBox(
                   decoration: BoxDecoration(
@@ -61,7 +64,7 @@ class FeaturedMovieBanner extends StatelessWidget {
                           border: Border.all(color: AppColors.violet),
                         ),
                         child: Text(
-                          '추천 신작',
+                          '오늘의 인기 영화',
                           style: AppTextStyles.bodySmall.copyWith(
                             color: AppColors.white,
                             fontWeight: FontWeight.w700,
@@ -78,11 +81,13 @@ class FeaturedMovieBanner extends StatelessWidget {
                           color: AppColors.white,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${movie.genres.join(' · ')} · ${movie.runtime}분',
-                        style: AppTextStyles.bodyMedium.copyWith(color: const Color(0xCCFFFFFF)),
-                      ),
+                      if (releaseYear != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          releaseYear,
+                          style: AppTextStyles.bodyMedium.copyWith(color: const Color(0xCCFFFFFF)),
+                        ),
+                      ],
                       const SizedBox(height: 20),
                       SizedBox(
                         width: double.infinity,

@@ -1,21 +1,25 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
-import 'package:movielog/models/movie.dart';
 import 'package:movielog/movie_log_app.dart';
 import 'package:movielog/router/app_router.dart';
 import 'package:movielog/screens/detail/movie_detail_screen.dart';
-import 'package:movielog/screens/home/widgets/featured_movie_banner.dart';
-import 'package:movielog/widgets/movie_card.dart';
+import 'package:movielog/screens/movies/widgets/movie_list_error.dart';
+import 'package:movielog/screens/detail/widgets/rating_dialog.dart';
+import 'package:movielog/screens/movies/movie_list_screen.dart';
 import 'package:movielog/widgets/movie_rating_input.dart';
 import 'package:movielog/screens/profile/profile_screen.dart';
 import 'package:movielog/screens/rating/rating_practice_screen.dart';
 import 'package:movielog/screens/signup/sign_up_screen.dart';
 import 'package:movielog/start_screen.dart';
 import 'package:movielog/theme/app_theme.dart';
+
+import 'fakes/fake_tmdb_movie_service.dart';
 
 Widget _appWith(Widget home) {
   return MaterialApp(theme: AppTheme.light, home: home);
@@ -48,6 +52,8 @@ void main() {
   setUp(() {
     // 테스트에서는 실제 저장소 대신 메모리 저장소를 사용합니다.
     SharedPreferencesAsyncPlatform.instance = InMemorySharedPreferencesAsync.empty();
+    // 테스트에서는 실제 .env 대신 가짜 Token을 사용합니다. (테스트 환경의 HTTP 요청은 모두 실패로 응답합니다.)
+    dotenv.loadFromString(envString: 'TMDB_ACCESS_TOKEN=test-token');
   });
 
   testWidgets('앱을 실행하면 시작 화면이 표시되고, 시작하기를 누르면 뒤로가기 없는 회원가입 화면으로 이동한다',
@@ -95,7 +101,7 @@ void main() {
     await tester.tap(find.text('영화').last);
     await tester.pumpAndSettle();
     expect(navBar().selectedIndex, 1);
-    expect(find.byType(GridView), findsOneWidget);
+    expect(find.byType(MovieListScreen), findsOneWidget);
 
     await tester.tap(find.text('마이'));
     await tester.pumpAndSettle();
@@ -103,58 +109,49 @@ void main() {
     expect(find.text('내 프로필'), findsOneWidget);
   });
 
-  testWidgets('홈의 추천 영화 카드를 누르면 같은 ID의 상세로 이동하고 뒤로 돌아올 수 있다', (WidgetTester tester) async {
-    AppRouter.router.go('/home');
-    await tester.pumpWidget(const MovieLogApp());
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byType(FeaturedMovieBanner));
-    await tester.pumpAndSettle();
-
-    expect(AppRouter.router.state.uri.path, '/movies/1');
-    expect(find.text('별빛 아래 우리'), findsOneWidget);
-    expect(find.text('4.5 (1,245)', findRichText: true), findsOneWidget);
-    expect(AppRouter.router.canPop(), isTrue);
-
-    await tester.tap(find.byIcon(Icons.arrow_back));
-    await tester.pumpAndSettle();
-    expect(find.text('오늘은 어떤\n영화를 볼까요?'), findsOneWidget);
-  });
-
-  testWidgets('extra 없이 URL로 직접 진입해도 Path Parameter로 영화를 찾는다', (WidgetTester tester) async {
+  testWidgets('extra 없이 URL로 직접 진입하면 영화를 찾을 수 없다는 안내를 보여준다', (WidgetTester tester) async {
     AppRouter.router.go('/movies/2');
     await tester.pumpWidget(const MovieLogApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('우주의 끝에서'), findsOneWidget);
+    expect(find.text('영화를 찾을 수 없어요.'), findsOneWidget);
   });
 
-  testWidgets('영화 목록의 장르 Chip을 누르면 Query Parameter로 해당 장르만 표시된다', (WidgetTester tester) async {
+  testWidgets('웹·데스크톱에서도 마우스로 끌어 가로 목록을 스크롤할 수 있다', (WidgetTester tester) async {
+    AppRouter.router.go('/start');
+    await tester.pumpWidget(const MovieLogApp());
+
+    final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(app.scrollBehavior!.dragDevices, contains(PointerDeviceKind.mouse));
+  });
+
+  testWidgets('영화 목록 요청이 실패하면 Error 상태와 재시도 버튼을 보여준다', (WidgetTester tester) async {
     AppRouter.router.go('/movies');
     await tester.pumpWidget(const MovieLogApp());
     await tester.pumpAndSettle();
 
-    expect(find.byType(MovieCard), findsWidgets);
-    await tester.tap(find.widgetWithText(ChoiceChip, 'SF'));
-    await tester.pumpAndSettle();
-
-    expect(AppRouter.router.state.uri.toString(), '/movies?genre=SF');
-    expect(find.byType(MovieCard), findsOneWidget);
-    expect(find.text('우주의 끝에서'), findsOneWidget);
+    expect(find.byType(MovieListError), findsOneWidget);
+    expect(find.text('다시 시도'), findsOneWidget);
   });
 
   testWidgets('상세 화면에서 평점 Dialog와 즐겨찾기 Snackbar가 동작한다', (WidgetTester tester) async {
     _usePhoneSize(tester, width: 400, height: 900);
-    await tester.pumpWidget(_appWith(MovieDetailScreen(movie: findMovieById(1))));
+    final movie = FakeTmdbMovieService().movie(550);
+    await tester.pumpWidget(_appWith(MovieDetailScreen(movie: movie)));
+
+    // overview가 비어 있으면 안내 문구를 보여줍니다.
+    expect(find.text('줄거리 정보가 없어요.'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.bookmark_border));
     await tester.pump();
     expect(find.byIcon(Icons.bookmark), findsOneWidget);
-    expect(find.text('\'별빛 아래 우리\'을(를) 즐겨찾기에 추가했어요.'), findsOneWidget);
+    expect(find.text("'영화 550'을(를) 즐겨찾기에 추가했어요."), findsOneWidget);
 
     await tester.tap(find.text('평점 남기기'));
     await tester.pumpAndSettle();
     expect(find.byType(MovieRatingInput), findsOneWidget);
+    // 평점 Dialog에는 TMDB id가 movieId로 전달됩니다.
+    expect(tester.widget<RatingDialog>(find.byType(RatingDialog)).movieId, 550);
     ElevatedButton confirm() => tester.widget<ElevatedButton>(find.widgetWithText(ElevatedButton, '확인'));
     expect(confirm().onPressed, isNull);
   });
