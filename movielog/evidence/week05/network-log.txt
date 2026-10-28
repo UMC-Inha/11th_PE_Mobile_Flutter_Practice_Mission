@@ -1,0 +1,80 @@
+# 5주차 실제 요청 로그 (2026-10-28T23:57:26.574181)
+# TMDB Token 은 Bearer *** 로 가려져 있다. 응답 Body 는 앞 400자만.
+# 인기 5개 / 전체 Discover 30개(page 요청 2번) / 액션(28) 30개 / 액션|모험(28|12) 30개
+# 홈 인기 5개: 969681 스파이더맨: 브랜드 뉴 데이, 1058424 호프, 1101412 폴2: 데드포인트, 1368337 오디세이, 1400940 클레이페이스
+[TMDB 요청] GET https://api.themoviedb.org/3/movie/popular?language=ko-KR&page=1
+[TMDB 요청 Header] {Authorization: Bearer ***, accept: application/json}
+[TMDB 요청 Query] {language: ko-KR, page: 1}
+[TMDB 응답] 200 https://api.themoviedb.org/3/movie/popular?language=ko-KR&page=1
+[TMDB 응답 Body] {page: 1, results: [{adult: false, backdrop_path: /4tjxYg2AbOzzG9G1YuiT2NzYhlH.jpg, genre_ids: [878, 28, 12], id: 969681, title: 스파이더맨: 브랜드 뉴 데이, original_language: en, original_title: Spider-Man: Brand New Day, overview: 4년 전 소중한 사람들을 지키기 위해 모두의 기억에서 사라진 피터 파커. 친절한 이웃 스파이더맨으로서 뉴욕을 지키며 고독한 삶을 살아가던 피터는 어느 날, 예상치 못한 DNA 변이로 인해 통제 불가능한 힘에 사로잡히고 그의 진짜 정체를 알고 있는 적까지 마주하게 된다. 타인의 의식을 조종하는 정체불명의 존재로 인해 모… (11139자 중 앞부분)
+[TMDB 요청] GET https://api.themoviedb.org/3/genre/movie/list?language=ko
+[TMDB 요청 Header] {Authorization: Bearer ***, accept: application/json}
+[TMDB 요청 Query] {language: ko}
+[TMDB 응답] 200 https://api.themoviedb.org/3/genre/movie/list?language=ko
+[TMDB 응답 Body] {genres: [{id: 28, name: 액션}, {id: 12, name: 모험}, {id: 16, name: 애니메이션}, {id: 35, name: 코미디}, {id: 80, name: 범죄}, {id: 99, name: 다큐멘터리}, {id: 18, name: 드라마}, {id: 10751, name: 가족}, {id: 14, name: 판타지}, {id: 36, name: 역사}, {id: 27, name: 공포}, {id: 10402, name: 음악}, {id: 9648, name: 미스터리}, {id: 10749, name: 로맨스}, {id: 878, name: SF}, {id: 10770, name: TV 영화}, {id: 53, name: 스릴러}, {id: 10752, name: 전… (424자 중 앞부분)
+[TMDB 요청] GET https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=1&sort_by=popularity.desc&include_adult=false&include_video=false
+[TMDB 요청 Header] {Authorization: Bearer ***, accept: application/json}
+[TMDB 요청 Query] {language: ko-KR, page: 1, sort_by: popularity.desc, include_adult: false, include_video: false}
+[TMDB 응답] 200 https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=1&sort_by=popularity.desc&include_adult=false&include_video=false
+[TMDB 응답 Body] {page: 1, results: [{adult: false, backdrop_path: /4tjxYg2AbOzzG9G1YuiT2NzYhlH.jpg, genre_ids: [878, 28, 12], id: 969681, title: 스파이더맨: 브랜드 뉴 데이, original_language: en, original_title: Spider-Man: Brand New Day, overview: 4년 전 소중한 사람들을 지키기 위해 모두의 기억에서 사라진 피터 파커. 친절한 이웃 스파이더맨으로서 뉴욕을 지키며 고독한 삶을 살아가던 피터는 어느 날, 예상치 못한 DNA 변이로 인해 통제 불가능한 힘에 사로잡히고 그의 진짜 정체를 알고 있는 적까지 마주하게 된다. 타인의 의식을 조종하는 정체불명의 존재로 인해 모… (10907자 중 앞부분)
+[TMDB 요청] GET https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=2&sort_by=popularity.desc&include_adult=false&include_video=false
+[TMDB 요청 Header] {Authorization: Bearer ***, accept: application/json}
+[TMDB 요청 Query] {language: ko-KR, page: 2, sort_by: popularity.desc, include_adult: false, include_video: false}
+[TMDB 응답] 200 https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=2&sort_by=popularity.desc&include_adult=false&include_video=false
+[TMDB 응답 Body] {page: 2, results: [{adult: false, backdrop_path: /oIglj0Jy9duG4LnrRUpH8n001Pk.jpg, genre_ids: [10749, 14, 35], id: 1302904, title: 프랙티컬 매직: 새로운 챕터, original_language: en, original_title: Practical Magic 2, overview: 마법의 피를 이어받은 오웬스 가문의 자매 샐리와 질리언. 폭풍 같았던 그날로부터 25년이 흐르고 평온한 일상을 되찾은 듯했던 가족에게 다시 어둠이 드리운다. 샐리의 딸 카일리가 오랫동안 묻혀 있던 가문의 비밀을 파헤치기 시작하면서 그 안에 잠들어 있던 예측할 수 없는 어두운 힘이 깨어나기 시작한 것. 수백 년간 오웬스 가문의 … (11241자 중 앞부분)
+[TMDB 요청] GET https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=1&sort_by=popularity.desc&include_adult=false&include_video=false&with_genres=28
+[TMDB 요청 Header] {Authorization: Bearer ***, accept: application/json}
+[TMDB 요청 Query] {language: ko-KR, page: 1, sort_by: popularity.desc, include_adult: false, include_video: false, with_genres: 28}
+[TMDB 응답] 200 https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=1&sort_by=popularity.desc&include_adult=false&include_video=false&with_genres=28
+[TMDB 응답 Body] {page: 1, results: [{adult: false, backdrop_path: /4tjxYg2AbOzzG9G1YuiT2NzYhlH.jpg, genre_ids: [878, 28, 12], id: 969681, title: 스파이더맨: 브랜드 뉴 데이, original_language: en, original_title: Spider-Man: Brand New Day, overview: 4년 전 소중한 사람들을 지키기 위해 모두의 기억에서 사라진 피터 파커. 친절한 이웃 스파이더맨으로서 뉴욕을 지키며 고독한 삶을 살아가던 피터는 어느 날, 예상치 못한 DNA 변이로 인해 통제 불가능한 힘에 사로잡히고 그의 진짜 정체를 알고 있는 적까지 마주하게 된다. 타인의 의식을 조종하는 정체불명의 존재로 인해 모… (10645자 중 앞부분)
+[TMDB 요청] GET https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=2&sort_by=popularity.desc&include_adult=false&include_video=false&with_genres=28
+[TMDB 요청 Header] {Authorization: Bearer ***, accept: application/json}
+[TMDB 요청 Query] {language: ko-KR, page: 2, sort_by: popularity.desc, include_adult: false, include_video: false, with_genres: 28}
+[TMDB 응답] 200 https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=2&sort_by=popularity.desc&include_adult=false&include_video=false&with_genres=28
+[TMDB 응답 Body] {page: 2, results: [{adult: false, backdrop_path: /wYtEvBmpBRXPdwGgr1gcWiwJSI7.jpg, genre_ids: [28, 27, 878], id: 460458, title: 레지던트 이블: 라쿤시티, original_language: en, original_title: Resident Evil: Welcome to Raccoon City, overview: 거대 제약회사 '엄브렐라'가 철수한 후 폐허가 된 '라쿤시티'. 어릴 적 끔찍한 사건을 겪고 고향을 떠났던 클레어가 돌아온 그날 밤, 라쿤시티는 좀비 바이러스에 감염되어 순식간에 지옥으로 돌변한다. 남은 시간은 7시간, 죽음의 도시를 탈출하라!, popularity: 65.5365, poster_p… (11877자 중 앞부분)
+[TMDB 요청] GET https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=1&sort_by=popularity.desc&include_adult=false&include_video=false&with_genres=28%7C12
+[TMDB 요청 Header] {Authorization: Bearer ***, accept: application/json}
+[TMDB 요청 Query] {language: ko-KR, page: 1, sort_by: popularity.desc, include_adult: false, include_video: false, with_genres: 28|12}
+[TMDB 응답] 200 https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=1&sort_by=popularity.desc&include_adult=false&include_video=false&with_genres=28%7C12
+[TMDB 응답 Body] {page: 1, results: [{adult: false, backdrop_path: /qqHFLg90IUSoTmSMpKOOW5RyqN3.jpg, genre_ids: [878, 9648, 28], id: 1058424, title: 호프, original_language: ko, original_title: 호프, overview: 지원해 줄 인력들은 산불을 끄러 갔고, 이젠 통신도 두절됐다. 호포 출장소의 범석과 성애는 노인들뿐인 마을을 지키기 위해 사투를 벌이고, 놈을 쫓아서  산으로 향했던 청년들과 성기는 되려 놈들의 사냥감이 되어 버린다. 무지가 빚어낸 불행의 씨앗은 입장의 차이를 거쳐 온 우주의 비극이 되고야  만다., popularity: 526.0192, poster_path: /ptqlN6… (10368자 중 앞부분)
+[TMDB 요청] GET https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=2&sort_by=popularity.desc&include_adult=false&include_video=false&with_genres=28%7C12
+[TMDB 요청 Header] {Authorization: Bearer ***, accept: application/json}
+[TMDB 요청 Query] {language: ko-KR, page: 2, sort_by: popularity.desc, include_adult: false, include_video: false, with_genres: 28|12}
+[TMDB 응답] 200 https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=2&sort_by=popularity.desc&include_adult=false&include_video=false&with_genres=28%7C12
+[TMDB 응답 Body] {page: 2, results: [{adult: false, backdrop_path: /npXZNWjOEYrqdMDPQ11SGBrXqAG.jpg, genre_ids: [28, 35], id: 1377237, title: 러너, original_language: en, original_title: Runner, overview: 브리즈번에서 의뢰인이 누구든 가리지 않고 물건을 운반하는 전직 특수부대 요원 행크. 공항에서 짐을 받아 정해진 장소로 넘기기만 하면 되는 간단한 일이라 여겼지만, 그 앞에 나타난 것은 병원으로 가야 한다고 고집하는 의료 배달원 벤이다. 상자 안에 든 것은 이식용 간, 그것도 몇 시간 안에 수술실에 도착하지 못하면 쓸모없어지는 극희귀 혈액형의 장기다. 이 간이 들어가야만 살 수 있는… (11514자 중 앞부분)
+[MovieLog API 요청] GET http://localhost:3000/members/1/ratings
+[MovieLog API 요청 Header] {accept: application/json}
+[MovieLog API 응답] 200 http://localhost:3000/members/1/ratings
+[MovieLog API 응답 Body] [{ratingId: 2, movieId: 155, score: 4, comment: 다시 봐도 명작, createdAt: 2026-10-28T13:46:01.000Z, updatedAt: 2026-10-28T13:46:01.000Z}, {ratingId: 1, movieId: 550, score: 5, comment: 최고의 영화!, createdAt: 2026-10-28T13:46:01.000Z, updatedAt: 2026-10-28T13:46:01.000Z}]
+[TMDB 요청] GET https://api.themoviedb.org/3/movie/155?language=ko-KR
+[TMDB 요청 Header] {Authorization: Bearer ***, accept: application/json}
+[TMDB 요청 Query] {language: ko-KR}
+[TMDB 요청] GET https://api.themoviedb.org/3/movie/550?language=ko-KR
+[TMDB 요청 Header] {Authorization: Bearer ***, accept: application/json}
+[TMDB 요청 Query] {language: ko-KR}
+[TMDB 응답] 200 https://api.themoviedb.org/3/movie/155?language=ko-KR
+[TMDB 응답 Body] {adult: false, backdrop_path: /9FE5eD92WfVCiivM9Pq9GVSrlWk.jpg, belongs_to_collection: {id: 263, name: 다크 나이트 시리즈, poster_path: /ePd6GbPmV33ieKZyjzzPAKv5XBA.jpg, backdrop_path: /xyhrCEdB4XRkelfVsqXeUZ6rLHi.jpg}, budget: 185000000, genres: [{id: 28, name: 액션}, {id: 53, name: 스릴러}, {id: 80, name: 범죄}], homepage: , id: 155, imdb_id: tt0468569, origin_country: [US], original_language: en, original_tit… (1626자 중 앞부분)
+[TMDB 응답] 200 https://api.themoviedb.org/3/movie/550?language=ko-KR
+[TMDB 응답 Body] {adult: false, backdrop_path: /c6OLXfKAk5BKeR6broC8pYiCquX.jpg, belongs_to_collection: null, budget: 63000000, genres: [{id: 18, name: 드라마}, {id: 53, name: 스릴러}], homepage: , id: 550, imdb_id: tt0137523, origin_country: [US], original_language: en, original_title: Fight Club, overview: 자동차 회사의 리콜 심사관으로 일하는 주인공은 일상의 무료함과 공허함 속에서 늘 새로운 탈출을 꿈꾼다. 그는 비행기에서 자신을 비누 제조업자라고 소개하는 타일러 더든을 만난다. 집에 돌아온 주인공은 아파… (1565자 중 앞부분)
+[MovieLog API 요청] GET http://localhost:3000/members/nickname/%EC%88%98%ED%98%84
+[MovieLog API 요청 Header] {accept: application/json}
+[MovieLog API 응답] 200 http://localhost:3000/members/nickname/%EC%88%98%ED%98%84
+[MovieLog API 응답 Body] {available: false}
+[MovieLog API 요청] GET http://localhost:3000/members/nickname/%EC%BC%80%EB%B9%88
+[MovieLog API 요청 Header] {accept: application/json}
+[MovieLog API 응답] 200 http://localhost:3000/members/nickname/%EC%BC%80%EB%B9%88
+[MovieLog API 응답 Body] {available: true}
+[MovieLog API 요청] GET http://localhost:3000/members/email/kevin%40umc.com
+[MovieLog API 요청 Header] {accept: application/json}
+[MovieLog API 응답] 200 http://localhost:3000/members/email/kevin%40umc.com
+[MovieLog API 응답 Body] {available: true}
+[TMDB 요청] GET https://api.themoviedb.org/3/genre/movie/list?language=ko
+[TMDB 요청 Header] {Authorization: Bearer ***, accept: application/json}
+[TMDB 요청 Query] {language: ko}
+[TMDB 오류] https://api.themoviedb.org/3/genre/movie/list?language=ko
+[TMDB 오류 내용] badResponse status=401 This exception was thrown because the response has a status code of 401 and RequestOptions.validateStatus was configured to throw for this status code.
+The status code of 401 has the following meaning: "Client error - the request contains bad syntax or cannot be fulfilled"
+Read more about status codes at https://developer.mozilla.org/en-US/docs/Web/HTTP/Status
+In order to resolve this exception you typically have either to verify and fix your request code or you have to fix the server code.
+
+[TMDB 오류 Body] {status_code: 7, status_message: Invalid API key: You must be granted a valid key., success: false}
