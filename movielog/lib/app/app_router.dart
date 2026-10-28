@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:movielog/core/services/fake_movie_service.dart';
-import 'package:movielog/core/storage/genre_preference.dart';
 import 'package:go_router/go_router.dart';
+import 'package:movielog/core/storage/genre_preference.dart';
+import 'package:movielog/data/models/tmdb_movie_dto.dart';
+import 'package:movielog/data/services/movielog_api_service.dart';
+import 'package:movielog/data/services/tmdb_movie_service.dart';
 import 'package:movielog/features/home/presentation/home_screen.dart';
 import 'package:movielog/features/movies/presentation/movie_detail_screen.dart';
 import 'package:movielog/features/movies/presentation/movie_list_screen.dart';
@@ -9,6 +11,12 @@ import 'package:movielog/features/my_page/presentation/my_page_screen.dart';
 import 'package:movielog/features/shell/presentation/main_shell.dart';
 import 'package:movielog/features/sign_up/presentation/sign_up_screen.dart';
 import 'package:movielog/features/start/presentation/start_screen.dart';
+import 'package:movielog/view_models/movie_detail_view_model.dart';
+import 'package:movielog/view_models/movie_home_view_model.dart';
+import 'package:movielog/view_models/movie_list_view_model.dart';
+import 'package:movielog/view_models/my_ratings_view_model.dart';
+import 'package:movielog/view_models/sign_up_view_model.dart';
+import 'package:provider/provider.dart';
 
 /// Route 경로를 한곳에 모아 오타로 인한 이동 실패를 막는다.
 abstract final class AppRoutes {
@@ -18,20 +26,16 @@ abstract final class AppRoutes {
   static const movies = '/movies';
   static const my = '/my';
 
-  static String movieDetail(String movieId) => '$movies/$movieId';
+  /// TMDB 영화 id → `/movies/550`
+  static String movieDetail(int movieId) => '$movies/$movieId';
 }
 
 /// 앱 전체 Router.
 ///
-/// 시작 → 회원가입, 회원가입 → 홈은 go로 이동해 스택을 교체한다.
-/// 그래서 회원가입·홈 화면에서는 뒤로 가기가 동작하지 않는다.
-/// 홈 · 영화 · 마이페이지는 StatefulShellRoute.indexedStack으로 묶어
-/// 탭마다 Navigation 상태(스크롤, 상세 화면 스택)를 보존한다.
-GoRouter createAppRouter({
-  String initialLocation = AppRoutes.start,
-  MovieService movieService = const FakeMovieService(),
-  MoviePreferences? preferences,
-}) {
+/// 공용 Service(TMDB·자체 API)는 MovieLogApp의 MultiProvider가 최상단에서 제공하고,
+/// 화면마다 하나씩인 ViewModel은 각 Route 안에서 ChangeNotifierProvider로 만든다.
+/// 그래서 화면을 벗어나면 ViewModel도 함께 dispose된다.
+GoRouter createAppRouter({String initialLocation = AppRoutes.start}) {
   return GoRouter(
     initialLocation: initialLocation,
     routes: [
@@ -43,7 +47,11 @@ GoRouter createAppRouter({
       GoRoute(
         path: AppRoutes.signUp,
         name: 'signUp',
-        builder: (context, state) => const SignUpScreen(),
+        builder: (context, state) => ChangeNotifierProvider(
+          create: (context) =>
+              SignUpViewModel(context.read<MovieLogApiService>()),
+          child: const SignUpScreen(),
+        ),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
@@ -54,7 +62,13 @@ GoRouter createAppRouter({
               GoRoute(
                 path: AppRoutes.home,
                 name: 'home',
-                builder: (context, state) => const HomeScreen(),
+                builder: (context, state) => ChangeNotifierProvider(
+                  // create는 이 화면이 처음 만들어질 때 한 번만 실행된다.
+                  create: (context) =>
+                      MovieHomeViewModel(context.read<TmdbMovieService>())
+                        ..loadPopular(),
+                  child: const HomeScreen(),
+                ),
               ),
             ],
           ),
@@ -63,20 +77,18 @@ GoRouter createAppRouter({
               GoRoute(
                 path: AppRoutes.movies,
                 name: 'movies',
-                // Query Parameter: /movies?genres=SF,드라마
-                builder: (context, state) => MovieListScreen(
-                  service: movieService,
-                  preferences: preferences,
-                  restoreSavedGenre: !state.uri.queryParameters.containsKey(
-                    'genres',
-                  ),
-                  initialMode: MovieLoadMode.values.firstWhere(
-                    (mode) => mode.name == state.uri.queryParameters['mode'],
-                    orElse: () => MovieLoadMode.success,
-                  ),
-                  selectedGenres: parseGenres(
-                    state.uri.queryParameters['genres'],
-                  ),
+                // Query Parameter: /movies?genres=28,12 (TMDB 장르 ID)
+                // 없으면 마지막에 저장한 장르를 복원한다.
+                builder: (context, state) => ChangeNotifierProvider(
+                  create: (context) => MovieListViewModel(
+                    context.read<TmdbMovieService>(),
+                    preferences: context.read<MoviePreferences>(),
+                    initialGenreIds:
+                        state.uri.queryParameters.containsKey('genres')
+                        ? parseGenreIds(state.uri.queryParameters['genres'])
+                        : null,
+                  )..loadInitial(),
+                  child: const MovieListScreen(),
                 ),
               ),
             ],
@@ -86,20 +98,43 @@ GoRouter createAppRouter({
               GoRoute(
                 path: AppRoutes.my,
                 name: 'my',
-                builder: (context, state) => const MyPageScreen(),
+                builder: (context, state) => ChangeNotifierProvider(
+                  create: (context) => MyRatingsViewModel(
+                    context.read<MovieLogApiService>(),
+                    context.read<TmdbMovieService>(),
+                  )..load(),
+                  child: const MyPageScreen(),
+                ),
               ),
             ],
           ),
         ],
       ),
-      // 상세는 탭 바깥(전체 화면)에 둔다. 홈·목록 어디서 push해도
-      // 뒤로 가면 누른 곳으로 정확히 돌아온다.
+      // 상세는 탭 바깥(전체 화면)에 둔다. Path의 movieId는 TMDB id다.
       GoRoute(
         path: '${AppRoutes.movies}/:movieId',
         name: 'movieDetail',
-        // Path Parameter: /movies/under-the-starlight
-        builder: (context, state) =>
-            MovieDetailScreen(movieId: state.pathParameters['movieId']),
+        builder: (context, state) {
+          final movieId = int.tryParse(state.pathParameters['movieId'] ?? '');
+          if (movieId == null) {
+            return Scaffold(
+              appBar: AppBar(),
+              body: const Center(child: Text('영화를 찾을 수 없어요.')),
+            );
+          }
+          final extra = state.extra;
+          return ChangeNotifierProvider(
+            create: (context) => MovieDetailViewModel(
+              context.read<TmdbMovieService>(),
+              movieId: movieId,
+              // 목록에서 넘겨준 DTO가 같은 영화일 때만 쓴다.
+              movie: extra is TmdbMovieDto && extra.id == movieId
+                  ? extra
+                  : null,
+            )..loadIfNeeded(),
+            child: const MovieDetailScreen(),
+          );
+        },
       ),
     ],
     errorBuilder: (context, state) => Scaffold(
@@ -109,17 +144,11 @@ GoRouter createAppRouter({
   );
 }
 
-/// `?genres=SF,드라마` → {'SF', '드라마'}
-Set<String> parseGenres(String? raw) {
-  if (raw == null || raw.trim().isEmpty) return {};
-  return raw.split(',').map((g) => g.trim()).where((g) => g.isNotEmpty).toSet();
-}
-
-/// {'SF', '드라마'} → `/movies?genres=SF,드라마`, 비어 있으면 `/movies`
-String moviesLocation(Set<String> genres) {
-  if (genres.isEmpty) return AppRoutes.movies;
+/// [28, 12] → `/movies?genres=28,12`, 비어 있으면 `/movies`
+String moviesLocation(List<int> genreIds) {
+  if (genreIds.isEmpty) return AppRoutes.movies;
   return Uri(
     path: AppRoutes.movies,
-    queryParameters: {'genres': genres.join(',')},
+    queryParameters: {'genres': genreIds.join(',')},
   ).toString();
 }

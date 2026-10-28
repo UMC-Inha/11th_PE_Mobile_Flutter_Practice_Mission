@@ -1,21 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:movielog/core/theme/app_theme.dart';
 
 class MovieListLoading extends StatelessWidget {
   const MovieListLoading({super.key});
+
   @override
   Widget build(BuildContext context) => Semantics(
     label: '영화 목록을 불러오는 중',
     child: Column(
       children: [
-        const Padding(padding: EdgeInsets.all(16), child: Text('영화를 불러오고 있어요')),
+        const Padding(
+          padding: EdgeInsets.all(16),
+          child: Text(
+            '영화를 불러오고 있어요',
+            style: TextStyle(color: AppColors.mutedText),
+          ),
+        ),
         Expanded(
           child: GridView.builder(
+            physics: const NeverScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               mainAxisSpacing: 20,
               crossAxisSpacing: 16,
-              childAspectRatio: 0.58,
+              childAspectRatio: 0.56,
             ),
             itemCount: 4,
             itemBuilder: (context, index) => Column(
@@ -25,7 +34,7 @@ class MovieListLoading extends StatelessWidget {
                   child: Container(
                     decoration: BoxDecoration(
                       color: const Color(0xFFE8ECF2),
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                 ),
@@ -52,17 +61,24 @@ class MovieListLoading extends StatelessWidget {
 
 class MovieListEmpty extends StatelessWidget {
   const MovieListEmpty({super.key, required this.onReset});
+
   final VoidCallback onReset;
+
   @override
   Widget build(BuildContext context) => ListView(
     physics: const AlwaysScrollableScrollPhysics(),
     children: [
       const SizedBox(height: 90),
-      const Icon(Icons.movie_outlined, size: 52),
+      const Icon(Icons.movie_outlined, size: 52, color: AppColors.mutedText),
       const SizedBox(height: 16),
       const Center(child: Text('조건에 맞는 영화가 없습니다.')),
       const SizedBox(height: 8),
-      const Center(child: Text('다른 장르를 선택하거나 전체 목록을 확인해 보세요.')),
+      const Center(
+        child: Text(
+          '다른 장르를 선택하거나 전체 목록을 확인해 보세요.',
+          style: TextStyle(color: AppColors.mutedText),
+        ),
+      ),
       Center(
         child: TextButton(onPressed: onReset, child: const Text('전체 영화 보기')),
       ),
@@ -74,20 +90,38 @@ class MovieListError extends StatelessWidget {
   const MovieListError({
     super.key,
     required this.onRetry,
+    this.message,
     this.timedOut = false,
   });
+
   final VoidCallback onRetry;
+  final String? message;
   final bool timedOut;
+
   @override
   Widget build(BuildContext context) => ListView(
     physics: const AlwaysScrollableScrollPhysics(),
+    padding: const EdgeInsets.symmetric(horizontal: 32),
     children: [
       const SizedBox(height: 90),
-      const Icon(Icons.cloud_off_outlined, size: 52),
+      const Icon(
+        Icons.cloud_off_outlined,
+        size: 52,
+        color: AppColors.mutedText,
+      ),
       const SizedBox(height: 16),
-      Center(child: Text(timedOut ? '응답이 늦어지고 있어요.' : '영화를 불러오지 못했습니다.')),
+      Center(
+        child: Text(
+          timedOut ? '응답이 늦어지고 있어요.' : '영화를 불러오지 못했습니다.',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
       const SizedBox(height: 8),
-      const Center(child: Text('잠시 후 다시 시도해 주세요.')),
+      Text(
+        message ?? '잠시 후 다시 시도해 주세요.',
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: AppColors.mutedText),
+      ),
       const SizedBox(height: 16),
       Center(
         child: FilledButton(onPressed: onRetry, child: const Text('다시 시도')),

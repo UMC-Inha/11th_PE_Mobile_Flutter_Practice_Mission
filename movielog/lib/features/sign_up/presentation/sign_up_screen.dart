@@ -3,14 +3,19 @@ import 'package:go_router/go_router.dart';
 import 'package:movielog/app/app_router.dart';
 import 'package:movielog/core/theme/app_theme.dart';
 import 'package:movielog/features/rating/presentation/widgets/rating_practice_card.dart';
+import 'package:movielog/features/sign_up/presentation/widgets/duplicate_check_field.dart';
 import 'package:movielog/features/sign_up/presentation/widgets/movie_log_text_form_field.dart';
 import 'package:movielog/features/sign_up/presentation/widgets/terms_agreement_tile.dart';
+import 'package:movielog/view_models/sign_up_view_model.dart';
+import 'package:provider/provider.dart';
 
 const nicknameFieldKey = Key('nicknameField');
 const emailFieldKey = Key('emailField');
 const passwordFieldKey = Key('passwordField');
 const termsCheckboxKey = Key('termsCheckbox');
 const signUpButtonKey = Key('signUpButton');
+const nicknameCheckButtonKey = Key('nicknameCheckButton');
+const emailCheckButtonKey = Key('emailCheckButton');
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -31,11 +36,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _obscurePassword = true;
   double _rating = 0;
 
-  bool get _canSubmit {
+  bool _canSubmit(SignUpViewModel viewModel) {
     // 버튼 활성화 조건과 최종 검증 규칙이 어긋나지 않도록 validator를 재사용한다.
+    // 5주차: 닉네임·이메일은 지금 입력값 그대로 서버 중복 확인을 통과해야 한다.
     return _validateNickname(_nicknameController.text) == null &&
         _validateEmail(_emailController.text) == null &&
         _validatePassword(_passwordController.text) == null &&
+        viewModel.isNicknameConfirmed(_nicknameController.text) &&
+        viewModel.isEmailConfirmed(_emailController.text) &&
         _agreedToTerms;
   }
 
@@ -72,6 +80,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final viewModel = context.watch<SignUpViewModel>();
+    final canSubmit = _canSubmit(viewModel);
     return Scaffold(
       body: SafeArea(
         child: LayoutBuilder(
@@ -98,12 +108,26 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           fieldKey: nicknameFieldKey,
                           controller: _nicknameController,
                           label: '닉네임',
-                          hint: '두 글자 이상 입력',
+                          hint: '2~12자 입력',
                           prefixIcon: Icons.person_outline,
                           textInputAction: TextInputAction.next,
                           validator: _validateNickname,
-                          onChanged: _updateFormState,
+                          onChanged: () {
+                            viewModel.onNicknameChanged(
+                              _nicknameController.text,
+                            );
+                            _updateFormState();
+                          },
                           onSubmitted: _emailFocusNode.requestFocus,
+                        ),
+                        DuplicateCheckRow(
+                          buttonKey: nicknameCheckButtonKey,
+                          state: viewModel.nickname,
+                          enabled:
+                              _validateNickname(_nicknameController.text) ==
+                              null,
+                          onCheck: () =>
+                              viewModel.checkNickname(_nicknameController.text),
                         ),
                         const SizedBox(height: 16),
                         MovieLogTextFormField(
@@ -116,8 +140,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           keyboardType: TextInputType.emailAddress,
                           textInputAction: TextInputAction.next,
                           validator: _validateEmail,
-                          onChanged: _updateFormState,
+                          onChanged: () {
+                            viewModel.onEmailChanged(_emailController.text);
+                            _updateFormState();
+                          },
                           onSubmitted: _passwordFocusNode.requestFocus,
+                        ),
+                        DuplicateCheckRow(
+                          buttonKey: emailCheckButtonKey,
+                          state: viewModel.email,
+                          enabled:
+                              _validateEmail(_emailController.text) == null,
+                          onCheck: () =>
+                              viewModel.checkEmail(_emailController.text),
                         ),
                         const SizedBox(height: 16),
                         MovieLogTextFormField(
@@ -131,7 +166,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           textInputAction: TextInputAction.done,
                           validator: _validatePassword,
                           onChanged: _updateFormState,
-                          onSubmitted: _canSubmit ? _submit : null,
+                          onSubmitted: canSubmit ? _submit : null,
                           suffixIcon: IconButton(
                             tooltip: _obscurePassword ? '비밀번호 보기' : '비밀번호 숨기기',
                             onPressed: () {
@@ -157,7 +192,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         const SizedBox(height: 20),
                         FilledButton(
                           key: signUpButtonKey,
-                          onPressed: _canSubmit ? _submit : null,
+                          onPressed: canSubmit ? _submit : null,
                           style: FilledButton.styleFrom(
                             minimumSize: const Size.fromHeight(56),
                             textStyle: const TextStyle(
@@ -226,7 +261,10 @@ class _WelcomeHeader extends StatelessWidget {
 String? _validateNickname(String? value) {
   final nickname = value?.trim() ?? '';
   if (nickname.isEmpty) return '닉네임을 입력해주세요.';
-  if (nickname.length < 2) return '닉네임은 두 글자 이상 입력해주세요.';
+  // 백엔드 검증(2~12자)과 같은 규칙을 화면에서도 먼저 확인한다.
+  if (nickname.length < 2 || nickname.length > 12) {
+    return '닉네임은 2~12자로 입력해주세요.';
+  }
   return null;
 }
 

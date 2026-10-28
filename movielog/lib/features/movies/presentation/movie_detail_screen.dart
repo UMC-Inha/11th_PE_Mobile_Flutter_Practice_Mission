@@ -1,126 +1,157 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:go_router/go_router.dart';
-import 'package:movielog/core/data/mock_movies.dart';
 import 'package:movielog/core/theme/app_theme.dart';
+import 'package:movielog/data/models/tmdb_movie_dto.dart';
+import 'package:movielog/features/movies/presentation/widgets/movie_card.dart';
 import 'package:movielog/features/rating/presentation/widgets/movie_rating_dialog.dart';
+import 'package:movielog/view_models/movie_detail_view_model.dart';
+import 'package:movielog/widgets/tmdb_poster_image.dart';
+import 'package:provider/provider.dart';
 
 const favoriteButtonKey = Key('favoriteButton');
 const rateButtonKey = Key('rateButton');
+const tmdbIdLabelKey = Key('tmdbIdLabel');
 
-class MovieDetailScreen extends StatefulWidget {
-  const MovieDetailScreen({super.key, required this.movieId});
+class MovieDetailScreen extends StatelessWidget {
+  const MovieDetailScreen({super.key});
 
-  /// Route의 Path Parameter(`/movies/:movieId`)로 받은 영화 ID.
-  final String? movieId;
-
-  @override
-  State<MovieDetailScreen> createState() => _MovieDetailScreenState();
-}
-
-class _MovieDetailScreenState extends State<MovieDetailScreen> {
-  // 평점과 즐겨찾기는 서버 없이 이 화면 안의 상태로만 관리한다.
-  bool _isFavorite = false;
-  double _myRating = 0;
-
-  void _toggleFavorite() {
-    setState(() => _isFavorite = !_isFavorite);
-    final messenger = ScaffoldMessenger.of(context);
-    messenger
+  Future<void> _rate(
+    BuildContext context,
+    MovieDetailViewModel viewModel,
+  ) async {
+    final movie = viewModel.movie!;
+    final score = await showMovieRatingDialog(
+      context,
+      movieTitle: movie.title,
+      initialRating: (viewModel.myRating?.score ?? 0).toDouble(),
+    );
+    if (score == null || !context.mounted) return;
+    // 평점 요청의 movieId = TMDB id (배열 index가 아니다)
+    final request = viewModel.rate(score.round());
+    debugPrint('[평점 요청 준비] ${request.toJson()}');
+    ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(_isFavorite ? '즐겨찾기에 추가했어요.' : '즐겨찾기에서 삭제했어요.'),
-          action: SnackBarAction(
-            label: '되돌리기',
-            onPressed: () => setState(() => _isFavorite = !_isFavorite),
+          content: Text(
+            'movieId ${request.movieId}에 ${request.score}점을 남겼어요. '
+            '(서버 저장은 6주차)',
           ),
         ),
       );
   }
 
-  Future<void> _rate(Movie movie) async {
-    final rating = await showMovieRatingDialog(
-      context,
-      movieTitle: movie.title,
-      initialRating: _myRating,
-    );
-    if (rating == null || !mounted) return;
-    setState(() => _myRating = rating);
-    // Dialog가 닫힌 뒤 현재 Scaffold에 Snackbar를 띄운다.
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${rating.toStringAsFixed(1)}점으로 평점을 남겼어요.')),
-    );
+  void _toggleFavorite(BuildContext context, MovieDetailViewModel viewModel) {
+    viewModel.toggleFavorite();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            viewModel.isFavorite ? '즐겨찾기에 추가했어요.' : '즐겨찾기에서 삭제했어요.',
+          ),
+          action: SnackBarAction(
+            label: '되돌리기',
+            onPressed: viewModel.toggleFavorite,
+          ),
+        ),
+      );
   }
 
   @override
   Widget build(BuildContext context) {
-    final movie = findMovieById(widget.movieId);
-    if (movie == null) {
-      return Scaffold(
-        appBar: AppBar(),
-        body: const Center(child: Text('영화를 찾을 수 없어요.')),
-      );
-    }
+    final viewModel = context.watch<MovieDetailViewModel>();
+    final movie = viewModel.movie;
 
     return Scaffold(
       appBar: AppBar(
-        leading: BackButton(onPressed: () => context.pop()),
+        leading: BackButton(
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/movies'),
+        ),
         actions: [
-          IconButton(
-            key: favoriteButtonKey,
-            tooltip: _isFavorite ? '즐겨찾기 삭제' : '즐겨찾기 추가',
-            onPressed: _toggleFavorite,
-            icon: Icon(
-              _isFavorite ? Icons.bookmark : Icons.bookmark_border,
-              color: _isFavorite ? AppColors.primary : null,
-            ),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-        children: [
-          _PosterHeader(movie: movie),
-          const SizedBox(height: 24),
-          _AverageRating(rating: movie.averageRating),
-          const SizedBox(height: 20),
-          const Text(
-            '줄거리',
-            style: TextStyle(
-              color: AppColors.text,
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            movie.overview,
-            style: const TextStyle(color: AppColors.text, height: 1.6),
-          ),
-          const SizedBox(height: 28),
-          if (_myRating > 0) ...[
-            Text(
-              '내 평점 ${_myRating.toStringAsFixed(1)}점',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w700,
+          if (movie != null)
+            IconButton(
+              key: favoriteButtonKey,
+              tooltip: viewModel.isFavorite ? '즐겨찾기 삭제' : '즐겨찾기 추가',
+              onPressed: () => _toggleFavorite(context, viewModel),
+              icon: Icon(
+                viewModel.isFavorite ? Icons.bookmark : Icons.bookmark_border,
+                color: viewModel.isFavorite ? AppColors.primary : null,
               ),
             ),
-            const SizedBox(height: 10),
-          ],
-          FilledButton.icon(
-            key: rateButtonKey,
-            onPressed: () => _rate(movie),
-            icon: const Icon(Icons.star_rounded),
-            label: Text(_myRating == 0 ? '평점 남기기' : '평점 수정하기'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(54),
-            ),
-          ),
         ],
       ),
+      body: switch (viewModel.status) {
+        MovieDetailLoadStatus.loading => const Center(
+          child: CircularProgressIndicator(),
+        ),
+        MovieDetailLoadStatus.error => Center(
+          child: Text(viewModel.message ?? '영화를 찾을 수 없어요.'),
+        ),
+        MovieDetailLoadStatus.success => ListView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+          children: [
+            _PosterHeader(movie: movie!),
+            const SizedBox(height: 24),
+            _AverageRating(voteAverage: movie.voteAverage),
+            const SizedBox(height: 20),
+            const Text(
+              '줄거리',
+              style: TextStyle(
+                color: AppColors.text,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (movie.overview.trim().isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    '줄거리 정보가 없어요.',
+                    style: TextStyle(color: AppColors.mutedText),
+                  ),
+                ),
+              )
+            else
+              Text(
+                movie.overview,
+                style: const TextStyle(color: AppColors.text, height: 1.6),
+              ),
+            const SizedBox(height: 28),
+            if (viewModel.myRating != null) ...[
+              Text(
+                '내 평점 ${viewModel.myRating!.score}점',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            FilledButton.icon(
+              key: rateButtonKey,
+              onPressed: () => _rate(context, viewModel),
+              icon: const Icon(Icons.star_rounded),
+              label: Text(viewModel.myRating == null ? '평점 남기기' : '평점 수정하기'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(54),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'TMDB 영화 ID ${movie.id}',
+              key: tmdbIdLabelKey,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.mutedText, fontSize: 12),
+            ),
+          ],
+        ),
+      },
     );
   }
 }
@@ -128,19 +159,19 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 class _PosterHeader extends StatelessWidget {
   const _PosterHeader({required this.movie});
 
-  final Movie movie;
+  final TmdbMovieDto movie;
 
   @override
   Widget build(BuildContext context) {
+    final year = releaseYear(movie);
     return Column(
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(18),
-          child: Image.asset(
-            movie.posterPath,
+          child: TmdbPosterImage(
+            posterPath: movie.posterPath,
             height: 360,
             width: double.infinity,
-            fit: BoxFit.cover,
           ),
         ),
         const SizedBox(height: 18),
@@ -153,20 +184,21 @@ class _PosterHeader extends StatelessWidget {
             fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          '${movie.genre} · ${movie.year} · ${movie.runtimeMinutes}분',
-          style: const TextStyle(color: AppColors.mutedText),
-        ),
+        // 개봉일이 없으면 연도를 표시하지 않는다.
+        if (year != null) ...[
+          const SizedBox(height: 6),
+          Text('$year 개봉', style: const TextStyle(color: AppColors.mutedText)),
+        ],
       ],
     );
   }
 }
 
 class _AverageRating extends StatelessWidget {
-  const _AverageRating({required this.rating});
+  const _AverageRating({required this.voteAverage});
 
-  final double rating;
+  /// TMDB 10점 만점 평균
+  final double voteAverage;
 
   @override
   Widget build(BuildContext context) {
@@ -179,30 +211,39 @@ class _AverageRating extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Row(
           children: [
-            const Text(
-              '평균 평점',
-              style: TextStyle(
-                color: AppColors.mutedText,
-                fontWeight: FontWeight.w600,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'TMDB 평균',
+                    style: TextStyle(
+                      color: AppColors.mutedText,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // 10점 만점을 별 5개에 맞춰 반으로 나눈다.
+                  RatingBarIndicator(
+                    rating: voteAverage / 2,
+                    itemSize: 22,
+                    itemBuilder: (context, _) => const Icon(
+                      Icons.star_rounded,
+                      color: Color(0xFFF5B301),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const Spacer(),
-            // 읽기 전용 별점: 누를 수 없다.
-            RatingBarIndicator(
-              rating: rating,
-              itemSize: 22,
-              itemBuilder: (context, _) =>
-                  const Icon(Icons.star_rounded, color: Color(0xFFF5B301)),
-            ),
-            const SizedBox(width: 8),
             Text(
-              rating.toStringAsFixed(1),
+              voteAverage.toStringAsFixed(1),
               style: const TextStyle(
                 color: AppColors.text,
-                fontSize: 18,
+                fontSize: 28,
                 fontWeight: FontWeight.w800,
               ),
             ),
+            const Text(' / 10', style: TextStyle(color: AppColors.mutedText)),
           ],
         ),
       ),

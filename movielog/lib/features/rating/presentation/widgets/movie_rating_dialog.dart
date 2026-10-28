@@ -58,15 +58,15 @@ class _MovieRatingDialogState extends State<MovieRatingDialog> {
               style: const TextStyle(color: AppColors.mutedText),
             ),
             const SizedBox(height: 20),
+            // 자체 백엔드 평점 score는 1~5 정수라 반 별 없이 고른다.
             MovieRatingInput(
               rating: _rating,
+              allowHalfRating: false,
               onChanged: (value) => setState(() => _rating = value),
             ),
             const SizedBox(height: 10),
             Text(
-              _rating == 0
-                  ? '별을 눌러 평점을 선택하세요'
-                  : '${_rating.toStringAsFixed(1)}점',
+              _rating == 0 ? '별을 눌러 평점을 선택하세요' : '${_rating.round()}점',
               style: const TextStyle(
                 color: AppColors.primary,
                 fontWeight: FontWeight.w700,

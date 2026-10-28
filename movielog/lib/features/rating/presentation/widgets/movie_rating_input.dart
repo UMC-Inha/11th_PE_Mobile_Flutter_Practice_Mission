@@ -8,11 +8,15 @@ class MovieRatingInput extends StatelessWidget {
     required this.rating,
     required this.onChanged,
     this.itemSize = 40,
+    this.allowHalfRating = true,
   });
 
   final double rating;
   final ValueChanged<double> onChanged;
   final double itemSize;
+
+  /// 자체 백엔드 score는 1~5 정수(TINYINT)라 영화 평점 Dialog는 false로 쓴다.
+  final bool allowHalfRating;
 
   @override
   Widget build(BuildContext context) {
@@ -22,8 +26,8 @@ class MovieRatingInput extends StatelessWidget {
       key: ValueKey(rating == 0),
       child: RatingBar.builder(
         initialRating: rating,
-        minRating: 0.5,
-        allowHalfRating: true,
+        minRating: allowHalfRating ? 0.5 : 1,
+        allowHalfRating: allowHalfRating,
         itemCount: 5,
         itemSize: itemSize,
         glow: false,

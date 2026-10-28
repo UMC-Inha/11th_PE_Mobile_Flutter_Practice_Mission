@@ -1,27 +1,51 @@
-# MovieLog — 4주차 비동기 처리와 로컬 저장
+# MovieLog — 5주차 TMDB 영화 API와 MVVM·Provider
 
-3주차 Movie 모델·카드·영화 Route를 재사용해 네 상태와 재시도, 장르·정렬 저장을 구현했다. 실제 API 대신 1초 지연 Mock Service를 사용한다.
+4주차 Mock Future를 실제 TMDB API로 바꾸고, 화면 코드와 데이터 코드를 MVVM으로 나눴다.
+5주차 자체 백엔드(NestJS `movie` 프로젝트)의 닉네임·이메일 중복 체크와 유저별 평점 조회도 화면에 연결했다.
 
 ```bash
+cp .env.example .env   # TMDB_ACCESS_TOKEN 에 TMDB "API 읽기 액세스 토큰"(긴 값). .env 는 Git 제외
 flutter pub get
-flutter run -d chrome --dart-define=INITIAL_LOCATION=/movies
+flutter run -d chrome --web-port 5173   # 자체 백엔드 CORS 허용 출처와 같은 포트
 flutter analyze
-flutter test
-flutter build web --debug --dart-define=INITIAL_LOCATION=/movies
+flutter test                            # 47개, 네트워크를 쓰지 않는다
+MOVIELOG_LIVE=1 flutter test test/live   # 실제 TMDB·백엔드로 인증 화면·로그 생성(evidence/week05)
 ```
 
-- `initState`에서 최초 Future를 만들고, 재시도/당겨서 새로고침 때 새 Future를 할당한다.
-- Loading은 카드 Skeleton, Empty는 전체 보기·새로고침, Error는 다시 시도 버튼을 제공한다.
-- Debug 우측 메뉴에서 성공/빈 목록/오류/시간 초과를 재현한다. `?mode=empty`, `?mode=failure`, `?mode=timeout`도 가능하다.
-- SharedPreferencesAsync 키: `selected_genre`(쉼표로 구분된 장르), `movie_sort`(`original`, `title`, `rating`). 저장값이 없거나 유효하지 않으면 전체·기본순이다.
-- 명시적 `?genres=SF` 딥링크는 저장값보다 우선한다. Query 없는 새 실행에서 저장값을 복원한다.
-- 2초 `Future.timeout`, `Future.wait` 병렬 초기화, 저장 큐와 `mounted` 검사 적용.
-- TODO(5주차 유저별 평점 조회 API)는 `core/services/fake_movie_service.dart`에 있다.
+## 구조
 
-## 검증 자료
+| 위치 | 하는 일 |
+|---|---|
+| `core/config/tmdb_config.dart` | `.env` 값 읽기와 누락 검사를 한곳에 |
+| `core/network/tmdb_client.dart` | TMDB 전용 Dio(Bearer Token). debug에서만 로그 Interceptor |
+| `core/network/movielog_api_client.dart` | 자체 백엔드 전용 Dio. TMDB Token을 싣지 않는다 |
+| `core/network/tmdb_logging_interceptor.dart` | 요청·응답·오류 로그, `Authorization`은 `Bearer ***` |
+| `data/models/` | `TmdbMovieDto`·`TmdbMoviePageDto`·`TmdbGenreDto`, 자체 API DTO·`CreateRatingRequest` |
+| `data/services/` | HTTP + JSON→DTO 변환만. 상태 없음(여러 ViewModel이 공유) |
+| `view_models/` | 화면마다 하나. 인기 5개·최대 30개·선택 장르 같은 화면 정책과 Loading/Empty/Error/Success |
+| `features/*/presentation` | View. 상태를 그리고 입력을 ViewModel에 넘길 뿐 API·JSON을 모른다 |
+| `widgets/tmdb_poster_image.dart` | `poster_path` → URL, null·로드 실패 placeholder |
 
-`evidence/00_four_states.jpg`: 실제 Flutter Widget을 렌더링한 Loading·Success·Empty·Error.
-`week04-retry.mp4`, `week04-restore.mp4`: 실제 Chrome 앱의 화면 캡처를 연결한 전환 영상. 긴 관찰 대기는 줄였고, 프레임에 합성한 상태는 없다. 복원 영상은 같은 브라우저에서 Query 없는 `/movies`를 새로 실행한다. OS 프로세스 종료를 촬영한 영상은 아니며 iOS/Android 실기기 재실행은 확인하지 않았다.
-`08_browser_saved_genre.jpg`와 `09_browser_restored_genre.jpg`: 실제 SharedPreferencesAsync 웹 저장·복원 결과.
+`MovieLogApp`의 `MultiProvider`가 `MaterialApp.router` 바깥에서 Service를 공유하고,
+각 GoRoute의 `ChangeNotifierProvider`가 화면별 ViewModel을 만들고 dispose한다.
 
-17개 테스트가 서비스 성공/빈 목록/실패, 네 상태, 800ms 이상 Loading, 재시도, 타임아웃, 저장 복원, 새로고침, dispose를 확인한다. `evidence_test.dart`는 테스트용 Memory Preferences로 별도의 상태 PNG를 만들며, 실제 브라우저 저장 검증과 구분한다.
+## 동작
+
+- 홈: Popular 첫 페이지 `take(5)`. 요청은 ViewModel 생성 때 한 번.
+- 영화: Genre API로 Chip, Discover page 1부터 TMDB `id`를 Map key로 중복 없이 최대 30개(한 페이지 개수를 코드에 박지 않음).
+- 장르 선택 → `with_genres`로 page 1부터 재요청. "전체"는 `with_genres` 없음. 요청 중엔 Chip·필터 비활성.
+- BottomSheet 다중 선택 → `List<int>` → `with_genres=28|12`(OR).
+- Pull to Refresh: 기존 목록을 둔 채 page 1부터, Loading 중엔 제스처 무시.
+- 실패: 최근 목록이 있으면 비우지 않고 재시도 Dialog(취소/다시 시도), 없으면 Error 화면.
+- 늦게 온 응답은 request version으로 버린다. dispose 뒤 notify 없음.
+- 상세 Route `/movies/{TMDB id}`. 평점 Dialog(1~5 정수) → `CreateRatingRequest(movieId: TMDB id)`.
+- 회원가입: 닉네임(2~12자)·이메일 `중복 확인` → `GET /members/nickname|email/...`. 확인한 값 그대로여야 가입 버튼이 켜진다.
+- 마이페이지: `GET /members/1/ratings`(로그인 전이라 시드 회원 1번) + movieId로 TMDB 제목·포스터.
+- 장르·정렬 저장 키는 `selected_genre_ids`(TMDB ID)·`movie_sort`. 4주차 이름 값은 읽지 않는다.
+
+## 검증 자료 (`evidence/week05`)
+
+- `web-signup-duplicate-check.jpg`, `web-my-ratings.jpg`: 실제 Chrome의 MovieLog 웹(5173)이 실제 NestJS 서버(3000)를 CORS 허용 상태로 호출한 화면
+- `network-failure-log.txt`: 실제 TMDB에 잘못된 Token → 401, URL·오류는 남고 Token 원문은 없음, release 조건에선 0줄
+- `12_empty_fixture.png`, `13_poster_placeholder_fixture.png`: 가짜 응답으로 만든 Empty·포스터 없음/로드 실패
+- `01~11_*.png`, `network-log.txt`: `test/live/live_evidence_test.dart`가 실제 TMDB 응답으로 만든 화면(Token 필요)
