@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:movielog/core/theme/app_theme.dart';
 
 const posterPlaceholderKey = Key('posterPlaceholder');
+const posterLoadingKey = Key('posterLoading');
 
 /// TMDB `poster_path`(파일 경로만 옴) → 이미지 URL 조합, null 처리, 로드 실패 처리를
 /// 화면마다 반복하지 않도록 묶은 재사용 Widget.
@@ -44,14 +45,17 @@ class TmdbPosterImage extends StatelessWidget {
       width: width,
       height: height,
       fit: fit,
-      // 받는 동안에도 같은 자리를 차지해 레이아웃이 흔들리지 않게 한다.
-      loadingBuilder: (context, child, progress) => progress == null
-          ? child
-          : Container(
-              width: width,
-              height: height,
-              color: const Color(0xFFE8ECF2),
-            ),
+      // 첫 프레임이 그려지기 전까지 회색 자리를 둔다. loadingBuilder는 첫 응답 조각이
+      // 오기 전에는 progress가 null이라 빈 칸이 되므로 frameBuilder로 판단한다.
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) return child;
+        return Container(
+          key: posterLoadingKey,
+          width: width,
+          height: height,
+          color: const Color(0xFFE8ECF2),
+        );
+      },
       errorBuilder: (context, error, stackTrace) => _placeholder(),
     );
   }

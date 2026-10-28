@@ -307,6 +307,17 @@ void main() {
     expect(tmdb.discoverCalls.last.genreIds, isEmpty);
   });
 
+  testWidgets('포스터를 받는 중에는 빈 칸 대신 회색 자리를 둔다', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: TmdbPosterImage(posterPath: '/a.jpg', width: 100, height: 150),
+      ),
+    );
+    // 테스트 HttpClient는 응답을 바로 주지 않으므로 아직 첫 프레임 전이다.
+    expect(find.byKey(posterLoadingKey), findsOneWidget);
+    expect(find.byKey(posterPlaceholderKey), findsNothing);
+  });
+
   testWidgets('포스터가 null이거나 로드에 실패하면 placeholder', (tester) async {
     tmdb.discoverPage = (page, genreIds) =>
         (FakeTmdbMovieService()
