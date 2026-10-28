@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../widgets/common_app_bar.dart';
 import 'widgets/edit_profile_button.dart';
 import 'widgets/favorite_genres.dart';
+import 'widgets/my_rating_list.dart';
 import 'widgets/profile_header.dart';
 import 'widgets/profile_stats.dart';
 
@@ -26,6 +27,8 @@ class ProfileScreen extends StatelessWidget {
               ProfileStats(),
               SizedBox(height: 40),
               FavoriteGenres(),
+              SizedBox(height: 40),
+              MyRatingList(),
             ],
           ),
         ),

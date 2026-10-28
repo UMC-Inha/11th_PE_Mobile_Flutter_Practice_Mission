@@ -2,14 +2,19 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'core/network/api_client.dart';
 import 'core/network/tmdb_client.dart';
+import 'data/services/member_service.dart';
 import 'data/services/tmdb_movie_service.dart';
 import 'router/app_router.dart';
 import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 
 class MovieLogApp extends StatelessWidget {
-  const MovieLogApp({super.key});
+  const MovieLogApp({super.key, this.memberService});
+
+  /// 테스트에서 실제 서버 대신 가짜 Service를 넣을 때 사용합니다.
+  final MemberService? memberService;
 
   @override
   Widget build(BuildContext context) {
@@ -18,6 +23,9 @@ class MovieLogApp extends StatelessWidget {
       providers: [
         Provider<TmdbMovieService>(
           create: (_) => TmdbMovieService(createTmdbClient()),
+        ),
+        Provider<MemberService>(
+          create: (_) => memberService ?? MemberService(createApiClient()),
         ),
       ],
       child: MaterialApp.router(

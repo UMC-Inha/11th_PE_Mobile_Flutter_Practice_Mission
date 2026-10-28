@@ -1,7 +1,9 @@
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../core/config/api_config.dart';
 import '../data/models/tmdb_movie_dto.dart';
+import '../data/services/member_service.dart';
 import '../data/services/tmdb_movie_service.dart';
 import '../screens/detail/movie_detail_screen.dart';
 import '../screens/home/home_screen.dart';
@@ -12,6 +14,7 @@ import '../screens/signup/sign_up_screen.dart';
 import '../start_screen.dart';
 import '../view_models/movie_home_view_model.dart';
 import '../view_models/movie_list_view_model.dart';
+import '../view_models/my_ratings_view_model.dart';
 
 class AppRouter {
   AppRouter._();
@@ -56,7 +59,13 @@ class AppRouter {
           ),
           GoRoute(
             path: '/my',
-            builder: (context, state) => const ProfileScreen(),
+            builder: (context, state) => ChangeNotifierProvider<MyRatingsViewModel>(
+              create: (context) => MyRatingsViewModel(
+                context.read<MemberService>(),
+                memberId: ApiConfig.myMemberId,
+              )..load(),
+              child: const ProfileScreen(),
+            ),
           ),
         ],
       ),
