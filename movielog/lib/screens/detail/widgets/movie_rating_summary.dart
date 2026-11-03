@@ -9,12 +9,14 @@ class MovieRatingSummary extends StatelessWidget {
   const MovieRatingSummary({
     super.key,
     required this.averageRating,
-    required this.ratingCount,
+    this.ratingCount,
     required this.myRating,
   });
 
   final double averageRating;
-  final int ratingCount;
+
+  /// 평가 수입니다. 값이 없으면 표시하지 않습니다.
+  final int? ratingCount;
   final double? myRating;
 
   static String _formatCount(int count) {
@@ -50,10 +52,11 @@ class MovieRatingSummary extends StatelessWidget {
                 text: averageRating.toStringAsFixed(1),
                 style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600),
               ),
-              TextSpan(
-                text: ' (${_formatCount(ratingCount)})',
-                style: AppTextStyles.bodySmall.copyWith(color: AppColors.darkGray),
-              ),
+              if (ratingCount case final count?)
+                TextSpan(
+                  text: ' (${_formatCount(count)})',
+                  style: AppTextStyles.bodySmall.copyWith(color: AppColors.darkGray),
+                ),
             ],
           ),
         ),

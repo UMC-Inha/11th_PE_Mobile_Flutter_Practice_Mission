@@ -7,8 +7,14 @@ import '../../../widgets/movie_rating_input.dart';
 /// MovieRatingInput을 담은 커스텀 Dialog입니다.
 /// 확인을 누르면 선택한 별점을 showDialog의 반환값으로 돌려줍니다.
 class RatingDialog extends StatefulWidget {
-  const RatingDialog({super.key, this.initialRating = 0});
+  const RatingDialog({
+    super.key,
+    required this.movieId,
+    this.initialRating = 0,
+  });
 
+  /// 평점을 남길 영화의 TMDB `id`입니다. 이후 자체 API 평점 요청의 `movieId`로 사용합니다.
+  final int movieId;
   final double initialRating;
 
   @override
