@@ -2,30 +2,47 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'core/network/api_client.dart';
+import 'core/network/movie_log_client.dart';
 import 'core/network/tmdb_client.dart';
-import 'data/services/member_service.dart';
+import 'data/services/member_check_service.dart';
+import 'data/services/rating_api_service.dart';
 import 'data/services/tmdb_movie_service.dart';
 import 'router/app_router.dart';
 import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 
 class MovieLogApp extends StatelessWidget {
-  const MovieLogApp({super.key, this.memberService});
+  const MovieLogApp({
+    super.key,
+    this.memberCheckService,
+    this.ratingApiService,
+    this.tmdbMovieService,
+  });
 
   /// 테스트에서 실제 서버 대신 가짜 Service를 넣을 때 사용합니다.
-  final MemberService? memberService;
+  final MemberCheckService? memberCheckService;
+  final RatingApiService? ratingApiService;
+  final TmdbMovieService? tmdbMovieService;
 
   @override
   Widget build(BuildContext context) {
+    // 워크북 백엔드를 부르는 두 Service는 Dio 하나를 공유합니다.
+    // TMDB Client와는 baseUrl·헤더가 다르므로 합치지 않습니다.
+    final movieLogClient = createMovieLogClient();
+
     // 여러 Route가 함께 쓰는 Service는 MaterialApp.router 바깥에서 한 번만 등록합니다.
     return MultiProvider(
       providers: [
         Provider<TmdbMovieService>(
-          create: (_) => TmdbMovieService(createTmdbClient()),
+          create: (_) =>
+              tmdbMovieService ?? TmdbMovieService(createTmdbClient()),
         ),
-        Provider<MemberService>(
-          create: (_) => memberService ?? MemberService(createApiClient()),
+        Provider<MemberCheckService>(
+          create: (_) =>
+              memberCheckService ?? MemberCheckService(movieLogClient),
+        ),
+        Provider<RatingApiService>(
+          create: (_) => ratingApiService ?? RatingApiService(movieLogClient),
         ),
       ],
       child: MaterialApp.router(
@@ -57,9 +74,9 @@ class _MovieLogScrollBehavior extends MaterialScrollBehavior {
 
   @override
   Set<PointerDeviceKind> get dragDevices => {
-        PointerDeviceKind.touch,
-        PointerDeviceKind.mouse,
-        PointerDeviceKind.trackpad,
-        PointerDeviceKind.stylus,
-      };
+    PointerDeviceKind.touch,
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.trackpad,
+    PointerDeviceKind.stylus,
+  };
 }

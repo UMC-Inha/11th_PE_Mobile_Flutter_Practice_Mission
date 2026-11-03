@@ -13,7 +13,17 @@ class FakeTmdbMovieService extends TmdbMovieService {
     this.idsWithoutPoster = const {},
     this.popularDelay = Duration.zero,
     this.failWithParseError = false,
+    this.missingMovieIds = const {},
+    this.networkFailMovieIds = const {},
   }) : super(Dio());
+
+  /// 상세 조회에서 404를 돌려줄 영화 ID입니다. (TMDB에 없는 영화)
+  final Set<int> missingMovieIds;
+
+  /// 상세 조회에서 네트워크 오류를 낼 영화 ID입니다.
+  final Set<int> networkFailMovieIds;
+
+  final detailRequests = <int>[];
 
   /// Popular 응답을 늦게 돌려줄 시간입니다. (응답 전에 화면을 떠나는 상황 재현)
   final Duration popularDelay;
@@ -67,6 +77,26 @@ class FakeTmdbMovieService extends TmdbMovieService {
   @override
   Future<List<TmdbGenreDto>> fetchGenres() async {
     return const [TmdbGenreDto(id: 28, name: '액션')];
+  }
+
+  @override
+  Future<TmdbMovieDto> fetchMovieDetail(int movieId) async {
+    detailRequests.add(movieId);
+    final options = RequestOptions(path: '/movie/$movieId');
+    if (missingMovieIds.contains(movieId)) {
+      throw DioException(
+        requestOptions: options,
+        type: DioExceptionType.badResponse,
+        response: Response(requestOptions: options, statusCode: 404),
+      );
+    }
+    if (networkFailMovieIds.contains(movieId)) {
+      throw DioException(
+        requestOptions: options,
+        type: DioExceptionType.connectionError,
+      );
+    }
+    return movie(movieId);
   }
 
   /// 숫자 자리에 문자열이 온 JSON을 변환할 때처럼 TypeError를 발생시킵니다.
