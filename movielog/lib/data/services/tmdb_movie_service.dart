@@ -63,6 +63,18 @@ class TmdbMovieService {
     );
     return TmdbMovieDto.fromJson(response.data!);
   }
+
+  /// [fetchMovie]와 같지만 TMDB가 404(그런 영화가 없음)를 주면 null을 돌려준다.
+  /// 평점은 자체 백엔드가 진짜 주인이라, TMDB에서 영화를 못 찾아도 평점은 화면에 남겨야 한다.
+  /// 404가 아닌 오류(네트워크·401 등)는 그대로 던진다. 호출 쪽이 일시적 실패로 다룬다.
+  Future<TmdbMovieDto?> findMovieById(int movieId) async {
+    try {
+      return await fetchMovie(movieId);
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) return null;
+      rethrow;
+    }
+  }
 }
 
 /// [28, 12] → "28|12"

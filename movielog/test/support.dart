@@ -42,6 +42,21 @@ TmdbMovieDto movie(
   popularity: 100.0 - id,
 );
 
+/// 자체 백엔드 평점 한 줄. comment를 null로 주면 후기 없는 평점이 된다.
+MemberRatingDto memberRating(
+  int ratingId,
+  int movieId, {
+  int score = 4,
+  String? comment = '후기',
+}) => MemberRatingDto(
+  ratingId: ratingId,
+  movieId: movieId,
+  score: score,
+  comment: comment,
+  createdAt: DateTime.utc(2026, 10, 28),
+  updatedAt: DateTime.utc(2026, 10, 28),
+);
+
 const testGenres = [
   TmdbGenreDto(id: 28, name: '액션'),
   TmdbGenreDto(id: 12, name: '모험'),
@@ -157,6 +172,20 @@ class FakeTmdbMovieService implements TmdbMovieService {
     if (found == null) throw failure('/movie/$movieId');
     return found;
   }
+
+  /// TMDB가 404를 주는 영화 ID. [findMovieById]는 이 ID에 null을 돌려준다.
+  final notFoundMovieIds = <int>{};
+
+  @override
+  Future<TmdbMovieDto?> findMovieById(int movieId) async {
+    movieCalls.add(movieId);
+    await _wait();
+    if (notFoundMovieIds.contains(movieId)) return null;
+    // 목록에도 404 목록에도 없으면 일시적인 네트워크 실패로 본다.
+    final found = moviesById[movieId];
+    if (found == null) throw failure('/movie/$movieId');
+    return found;
+  }
 }
 
 /// 자체 백엔드 대신 쓰는 가짜 Service. 시드 데이터(수현, noco@umc.com)와 같은 답을 한다.
@@ -171,8 +200,25 @@ class FakeMovieLogApiService implements MovieLogApiService {
   final Set<String> takenEmails;
   List<MemberRatingDto> ratings;
   bool fail = false;
+
+  /// 값이 있으면 평점 조회가 이 상태 코드의 응답 오류(400/404 등)로 실패한다.
+  int? ratingsStatus;
+
+  /// 값이 있으면 중복 확인 응답을 이 Future가 끝날 때까지 붙잡는다(통신 중 상태 확인용).
+  Completer<void>? gate;
+
   final checkedNicknames = <String>[];
   final checkedEmails = <String>[];
+  final ratingMemberIds = <int>[];
+
+  static DioException badResponse(String path, int statusCode) => DioException(
+    requestOptions: RequestOptions(path: path),
+    type: DioExceptionType.badResponse,
+    response: Response(
+      requestOptions: RequestOptions(path: path),
+      statusCode: statusCode,
+    ),
+  );
 
   static final seedRatings = [
     MemberRatingDto(
@@ -197,6 +243,7 @@ class FakeMovieLogApiService implements MovieLogApiService {
   Future<AvailabilityDto> checkNickname(String nickname) async {
     checkedNicknames.add(nickname);
     await Future<void>.delayed(const Duration(milliseconds: 100));
+    if (gate != null) await gate!.future;
     if (fail) throw FakeTmdbMovieService.failure('/members/nickname');
     return AvailabilityDto(available: !takenNicknames.contains(nickname));
   }
@@ -205,13 +252,20 @@ class FakeMovieLogApiService implements MovieLogApiService {
   Future<AvailabilityDto> checkEmail(String email) async {
     checkedEmails.add(email);
     await Future<void>.delayed(const Duration(milliseconds: 100));
+    if (gate != null) await gate!.future;
     if (fail) throw FakeTmdbMovieService.failure('/members/email');
     return AvailabilityDto(available: !takenEmails.contains(email));
   }
 
   @override
   Future<List<MemberRatingDto>> fetchMemberRatings(int memberId) async {
+    ratingMemberIds.add(memberId);
     await Future<void>.delayed(const Duration(milliseconds: 100));
+    if (gate != null) await gate!.future;
+    final status = ratingsStatus;
+    if (status != null) {
+      throw badResponse('/members/$memberId/ratings', status);
+    }
     if (fail) throw FakeTmdbMovieService.failure('/members/$memberId/ratings');
     return ratings;
   }

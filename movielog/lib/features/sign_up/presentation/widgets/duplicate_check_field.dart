@@ -1,56 +1,107 @@
 import 'package:flutter/material.dart';
 import 'package:movielog/core/theme/app_theme.dart';
+import 'package:movielog/features/sign_up/presentation/widgets/movie_log_text_form_field.dart';
 import 'package:movielog/view_models/sign_up_view_model.dart';
+import 'package:movielog/widgets/movielog_button.dart';
 
-/// 입력칸 아래에 붙는 "중복 확인" 버튼과 결과 문구.
-class DuplicateCheckRow extends StatelessWidget {
-  const DuplicateCheckRow({
+/// 입력창 바깥 오른쪽에 "중복 확인" 버튼이 붙는 입력칸.
+///
+/// [MovieLogTextFormField]와 [MovieLogButton]을 Row의 별도 형제로 두고 8px 띄운다.
+/// 확인 결과(체크 표시)는 입력창 안쪽에만 그려서 버튼과 겹치지 않는다.
+class DuplicateCheckField extends StatelessWidget {
+  const DuplicateCheckField({
     super.key,
+    required this.fieldKey,
     required this.buttonKey,
-    required this.state,
-    required this.enabled,
+    required this.controller,
+    required this.label,
+    required this.hint,
+    required this.prefixIcon,
+    required this.validator,
+    required this.status,
+    required this.errorText,
+    required this.canCheck,
+    required this.availableMessage,
+    required this.onChanged,
     required this.onCheck,
+    this.focusNode,
+    this.keyboardType,
+    this.onSubmitted,
   });
 
+  final Key fieldKey;
   final Key buttonKey;
-  final DuplicateCheckState state;
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final String label;
+  final String hint;
+  final IconData prefixIcon;
+  final TextInputType? keyboardType;
+  final String? Function(String?) validator;
 
-  /// 형식 검사를 통과해야 서버에 묻는다(백엔드도 형식이 틀리면 400).
-  final bool enabled;
+  final CheckStatus status;
+  final String? errorText;
+
+  /// ViewModel이 허용하는지(통신 중·이미 중복이면 false). 형식 검사는 아래에서 따로 한다.
+  final bool canCheck;
+  final String availableMessage;
+  final VoidCallback onChanged;
   final VoidCallback onCheck;
+  final VoidCallback? onSubmitted;
 
   @override
   Widget build(BuildContext context) {
-    final checking = state.status == DuplicateCheckStatus.checking;
-    final color = switch (state.status) {
-      DuplicateCheckStatus.available => const Color(0xFF1B7F3B),
-      DuplicateCheckStatus.taken ||
-      DuplicateCheckStatus.failed => AppColors.error,
-      _ => AppColors.mutedText,
-    };
-    return Padding(
-      padding: const EdgeInsets.only(top: 6, left: 4),
-      child: Row(
-        children: [
-          Expanded(
+    final available = status == CheckStatus.available;
+    final checking = status == CheckStatus.checking;
+    // 형식이 틀린 값은 서버에 묻지 않는다(백엔드도 형식이 틀리면 400).
+    final formatValid = validator(controller.text) == null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          // 입력창에 에러 문구가 붙어 높이가 커져도 버튼은 입력 상자 높이에 맞춰 위쪽에 둔다.
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: MovieLogTextFormField(
+                fieldKey: fieldKey,
+                controller: controller,
+                focusNode: focusNode,
+                label: label,
+                hint: hint,
+                prefixIcon: prefixIcon,
+                keyboardType: keyboardType,
+                textInputAction: TextInputAction.next,
+                validator: validator,
+                errorText: errorText,
+                suffixIcon: available
+                    ? const Icon(Icons.check_circle, color: AppColors.success)
+                    : null,
+                onChanged: onChanged,
+                onSubmitted: onSubmitted,
+              ),
+            ),
+            const SizedBox(width: 8),
+            // width를 주지 않아 label 길이에 맞는 내용 기반 크기를 쓴다.
+            MovieLogButton(
+              key: buttonKey,
+              label: '중복 확인',
+              height: 56,
+              isLoading: checking,
+              onPressed: canCheck && formatValid ? onCheck : null,
+            ),
+          ],
+        ),
+        if (available)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
             child: Text(
-              state.message ?? '가입 전에 중복 확인이 필요해요.',
-              style: TextStyle(color: color, fontSize: 13),
+              availableMessage,
+              style: const TextStyle(color: AppColors.success, fontSize: 13),
             ),
           ),
-          OutlinedButton(
-            key: buttonKey,
-            onPressed: enabled && !checking ? onCheck : null,
-            child: checking
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('중복 확인'),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }

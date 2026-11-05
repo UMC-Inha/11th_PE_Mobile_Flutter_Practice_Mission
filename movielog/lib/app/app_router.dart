@@ -8,6 +8,7 @@ import 'package:movielog/features/home/presentation/home_screen.dart';
 import 'package:movielog/features/movies/presentation/movie_detail_screen.dart';
 import 'package:movielog/features/movies/presentation/movie_list_screen.dart';
 import 'package:movielog/features/my_page/presentation/my_page_screen.dart';
+import 'package:movielog/features/my_page/presentation/my_ratings_screen.dart';
 import 'package:movielog/features/shell/presentation/main_shell.dart';
 import 'package:movielog/features/sign_up/presentation/sign_up_screen.dart';
 import 'package:movielog/features/start/presentation/start_screen.dart';
@@ -26,6 +27,9 @@ abstract final class AppRoutes {
   static const movies = '/movies';
   static const my = '/my';
 
+  /// 마이페이지의 자식 화면. 하단 NavigationBar를 가리도록 root Navigator 위에 열린다.
+  static const myRatings = '/my/ratings';
+
   /// TMDB 영화 id → `/movies/550`
   static String movieDetail(int movieId) => '$movies/$movieId';
 }
@@ -36,8 +40,14 @@ abstract final class AppRoutes {
 /// 화면마다 하나씩인 ViewModel은 각 Route 안에서 ChangeNotifierProvider로 만든다.
 /// 그래서 화면을 벗어나면 ViewModel도 함께 dispose된다.
 GoRouter createAppRouter({String initialLocation = AppRoutes.start}) {
+  // 앱 전체를 감싸는 root Navigator의 키. GoRoute는 parentNavigatorKey를 주지 않으면
+  // 가장 가까운 ShellRoute의 Navigator를 쓰므로, 하단 NavigationBar를 가려야 하는
+  // 자식 화면(/my/ratings)에는 이 키를 지정한다.
+  final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+
   return GoRouter(
     initialLocation: initialLocation,
+    navigatorKey: rootNavigatorKey,
     routes: [
       GoRoute(
         path: AppRoutes.start,
@@ -98,13 +108,23 @@ GoRouter createAppRouter({String initialLocation = AppRoutes.start}) {
               GoRoute(
                 path: AppRoutes.my,
                 name: 'my',
-                builder: (context, state) => ChangeNotifierProvider(
-                  create: (context) => MyRatingsViewModel(
-                    context.read<MovieLogApiService>(),
-                    context.read<TmdbMovieService>(),
-                  )..load(),
-                  child: const MyPageScreen(),
-                ),
+                builder: (context, state) => const MyPageScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'ratings', // 최종 경로: /my/ratings
+                    name: 'myRatings',
+                    parentNavigatorKey: rootNavigatorKey,
+                    // 화면을 벗어나면 ViewModel도 dispose되어 늦게 온 응답이 버려진다.
+                    builder: (context, state) => ChangeNotifierProvider(
+                      create: (context) => MyRatingsViewModel(
+                        context.read<MovieLogApiService>(),
+                        context.read<TmdbMovieService>(),
+                        // 6주차는 학습용 ID 1이다.
+                      )..load(),
+                      child: const MyRatingsScreen(),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

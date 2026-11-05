@@ -6,6 +6,10 @@ abstract final class AppColors {
   static const text = Color(0xFF242126);
   static const mutedText = Color(0xFF6E6875);
   static const error = Color(0xFFB3261E);
+  static const success = Color(0xFF1B7F3B);
+
+  /// 비활성·통신 중 버튼 배경. 입력창 테두리와 같은 회보라 계열이다.
+  static const disabled = Color(0xFFD7D1DC);
 }
 
 abstract final class AppTheme {

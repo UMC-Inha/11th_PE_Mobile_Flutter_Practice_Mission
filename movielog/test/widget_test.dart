@@ -8,7 +8,6 @@ import 'package:movielog/features/movies/presentation/widgets/genre_filter_sheet
 import 'package:movielog/features/movies/presentation/widgets/movie_grid.dart';
 import 'package:movielog/features/movies/presentation/widgets/movie_list_states.dart';
 import 'package:movielog/features/movies/presentation/widgets/retry_dialog.dart';
-import 'package:movielog/features/my_page/presentation/my_page_screen.dart';
 import 'package:movielog/features/rating/presentation/widgets/movie_rating_dialog.dart';
 import 'package:movielog/features/sign_up/presentation/sign_up_screen.dart';
 import 'package:movielog/features/start/presentation/start_screen.dart';
@@ -68,8 +67,12 @@ void main() {
     await tester.tap(find.byKey(startButtonKey));
     await settle(tester);
 
-    FilledButton signUp() =>
-        tester.widget<FilledButton>(find.byKey(signUpButtonKey));
+    ElevatedButton signUp() => tester.widget<ElevatedButton>(
+      find.descendant(
+        of: find.byKey(signUpButtonKey),
+        matching: find.byType(ElevatedButton),
+      ),
+    );
 
     await tester.enterText(find.byKey(nicknameFieldKey), '수현');
     await tester.enterText(find.byKey(emailFieldKey), 'kevin@umc.com');
@@ -109,7 +112,12 @@ void main() {
     await tester.pump();
     expect(
       tester
-          .widget<OutlinedButton>(find.byKey(nicknameCheckButtonKey))
+          .widget<ElevatedButton>(
+            find.descendant(
+              of: find.byKey(nicknameCheckButtonKey),
+              matching: find.byType(ElevatedButton),
+            ),
+          )
           .onPressed,
       isNull,
     );
@@ -330,30 +338,6 @@ void main() {
     expect(find.text('포스터 없음'), findsNWidgets(2));
   });
 
-  testWidgets('마이페이지: 자체 백엔드 평점 목록과 TMDB 제목', (tester) async {
-    tmdb.moviesById
-      ..[550] = movie(550, title: '파이트 클럽')
-      ..[155] = movie(155, title: '다크 나이트');
-    await tester.pumpWidget(app(AppRoutes.my));
-    await settle(tester);
-    expect(find.text('다크 나이트'), findsOneWidget);
-    expect(find.text('파이트 클럽'), findsOneWidget);
-    expect(find.text('최고의 영화!'), findsOneWidget);
-    expect(find.textContaining('movieId 155'), findsOneWidget);
-    expect(find.text('4.5'), findsOneWidget);
-  });
-
-  testWidgets('마이페이지: 서버가 꺼져 있으면 안내와 다시 시도', (tester) async {
-    api.fail = true;
-    await tester.pumpWidget(app(AppRoutes.my));
-    await settle(tester);
-    expect(find.byKey(myRatingsRetryKey), findsOneWidget);
-    api.fail = false;
-    await tester.tap(find.byKey(myRatingsRetryKey));
-    await settle(tester);
-    expect(find.text('최고의 영화!'), findsOneWidget);
-  });
-
   testWidgets('NavigationBar로 탭을 전환한다', (tester) async {
     await tester.pumpWidget(app(AppRoutes.home));
     await settle(tester);
@@ -362,7 +346,7 @@ void main() {
     expect(find.text('전체 · 30편'), findsOneWidget);
     await tester.tap(find.text('마이페이지').last);
     await settle(tester);
-    expect(find.text('내가 남긴 평점'), findsOneWidget);
+    expect(find.text('내가 등록한 평점'), findsOneWidget);
     expect(
       tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
       2,

@@ -7,6 +7,7 @@ import 'package:movielog/features/sign_up/presentation/widgets/duplicate_check_f
 import 'package:movielog/features/sign_up/presentation/widgets/movie_log_text_form_field.dart';
 import 'package:movielog/features/sign_up/presentation/widgets/terms_agreement_tile.dart';
 import 'package:movielog/view_models/sign_up_view_model.dart';
+import 'package:movielog/widgets/movielog_button.dart';
 import 'package:provider/provider.dart';
 
 const nicknameFieldKey = Key('nicknameField');
@@ -104,55 +105,52 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       children: [
                         const _WelcomeHeader(),
                         const SizedBox(height: 32),
-                        MovieLogTextFormField(
+                        // 입력창과 버튼은 Row의 별도 형제다. 버튼은 width를 주지 않아
+                        // 내용 기반 크기를 쓰고, 입력창이 남은 폭을 Expanded로 차지한다.
+                        DuplicateCheckField(
                           fieldKey: nicknameFieldKey,
+                          buttonKey: nicknameCheckButtonKey,
                           controller: _nicknameController,
                           label: '닉네임',
                           hint: '2~12자 입력',
                           prefixIcon: Icons.person_outline,
-                          textInputAction: TextInputAction.next,
                           validator: _validateNickname,
+                          status: viewModel.nicknameCheckStatus,
+                          errorText: viewModel.nicknameErrorText,
+                          canCheck: viewModel.canCheckNickname,
+                          availableMessage: '사용할 수 있는 닉네임이에요.',
                           onChanged: () {
                             viewModel.onNicknameChanged(
                               _nicknameController.text,
                             );
                             _updateFormState();
                           },
-                          onSubmitted: _emailFocusNode.requestFocus,
-                        ),
-                        DuplicateCheckRow(
-                          buttonKey: nicknameCheckButtonKey,
-                          state: viewModel.nickname,
-                          enabled:
-                              _validateNickname(_nicknameController.text) ==
-                              null,
                           onCheck: () =>
                               viewModel.checkNickname(_nicknameController.text),
+                          onSubmitted: _emailFocusNode.requestFocus,
                         ),
                         const SizedBox(height: 16),
-                        MovieLogTextFormField(
+                        DuplicateCheckField(
                           fieldKey: emailFieldKey,
+                          buttonKey: emailCheckButtonKey,
                           controller: _emailController,
                           focusNode: _emailFocusNode,
                           label: '이메일',
                           hint: 'movielog@example.com',
                           prefixIcon: Icons.email_outlined,
                           keyboardType: TextInputType.emailAddress,
-                          textInputAction: TextInputAction.next,
                           validator: _validateEmail,
+                          status: viewModel.emailCheckStatus,
+                          errorText: viewModel.emailErrorText,
+                          canCheck: viewModel.canCheckEmail,
+                          availableMessage: '사용할 수 있는 이메일이에요.',
                           onChanged: () {
                             viewModel.onEmailChanged(_emailController.text);
                             _updateFormState();
                           },
-                          onSubmitted: _passwordFocusNode.requestFocus,
-                        ),
-                        DuplicateCheckRow(
-                          buttonKey: emailCheckButtonKey,
-                          state: viewModel.email,
-                          enabled:
-                              _validateEmail(_emailController.text) == null,
                           onCheck: () =>
                               viewModel.checkEmail(_emailController.text),
+                          onSubmitted: _passwordFocusNode.requestFocus,
                         ),
                         const SizedBox(height: 16),
                         MovieLogTextFormField(
@@ -190,17 +188,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           },
                         ),
                         const SizedBox(height: 20),
-                        FilledButton(
+                        // Form 맨 아래는 화면 전체 너비를 쓴다(width: double.infinity).
+                        // 이번 주차는 실제 가입 요청이 없어 모든 입력이 유효하면 홈으로만 이동한다.
+                        MovieLogButton(
                           key: signUpButtonKey,
+                          label: '가입하기',
+                          height: 56,
+                          width: double.infinity,
                           onPressed: canSubmit ? _submit : null,
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(56),
-                            textStyle: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          child: const Text('가입하기'),
                         ),
                         const SizedBox(height: 36),
                         RatingPracticeCard(

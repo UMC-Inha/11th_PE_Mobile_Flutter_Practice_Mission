@@ -5,8 +5,6 @@ import 'package:movielog/core/storage/genre_preference.dart';
 import 'package:movielog/data/models/tmdb_movie_page.dart';
 import 'package:movielog/view_models/movie_home_view_model.dart';
 import 'package:movielog/view_models/movie_list_view_model.dart';
-import 'package:movielog/view_models/my_ratings_view_model.dart';
-import 'package:movielog/view_models/sign_up_view_model.dart';
 
 import 'support.dart';
 
@@ -273,36 +271,5 @@ void main() {
       expect(vm.visibleMovies.first.voteAverage, 9);
       expect(service.discoverCalls, hasLength(1));
     });
-  });
-
-  test('MyRatingsViewModel: 자체 백엔드 평점 + movieId로 TMDB 제목', () async {
-    final tmdb = FakeTmdbMovieService(delay: Duration.zero)
-      ..moviesById[550] = movie(550, title: '파이트 클럽');
-    final api = FakeMovieLogApiService();
-    final vm = MyRatingsViewModel(api, tmdb);
-    await vm.load();
-    expect(vm.status, MyRatingsLoadStatus.success);
-    expect(vm.ratings.map((r) => r.ratingId), [2, 1]);
-    expect(vm.moviesById[550]?.title, '파이트 클럽');
-    expect(vm.moviesById.containsKey(155), isFalse); // TMDB 실패해도 목록은 유지
-    expect(vm.averageScore, 4.5);
-    expect(tmdb.movieCalls.toSet(), {155, 550});
-  });
-
-  test('SignUpViewModel: 중복 확인 후 입력을 바꾸면 다시 확인해야 한다', () async {
-    final api = FakeMovieLogApiService();
-    final vm = SignUpViewModel(api);
-    await vm.checkNickname(' 수현 ');
-    expect(vm.nickname.status, DuplicateCheckStatus.taken);
-    expect(api.checkedNicknames.single, '수현');
-    await vm.checkNickname('케빈');
-    expect(vm.isNicknameConfirmed('케빈'), isTrue);
-    vm.onNicknameChanged('케빈2');
-    expect(vm.isNicknameConfirmed('케빈2'), isFalse);
-    expect(vm.nickname.status, DuplicateCheckStatus.unchecked);
-
-    api.fail = true;
-    await vm.checkEmail('kevin@umc.com');
-    expect(vm.email.status, DuplicateCheckStatus.failed);
   });
 }

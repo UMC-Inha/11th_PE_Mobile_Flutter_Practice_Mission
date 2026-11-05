@@ -95,6 +95,16 @@ class CachingTmdbService implements TmdbMovieService {
   @override
   Future<TmdbMovieDto> fetchMovie(int movieId) =>
       _get('movie:$movieId', () => _real.fetchMovie(movieId));
+
+  @override
+  Future<TmdbMovieDto?> findMovieById(int movieId) async {
+    try {
+      return await fetchMovie(movieId);
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) return null;
+      rethrow;
+    }
+  }
 }
 
 class _Failure {
