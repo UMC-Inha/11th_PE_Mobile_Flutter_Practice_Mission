@@ -1,0 +1,15 @@
+# 5주차 Challenge — 네트워크 로그 요청 실패 재현
+# 2026-10-28T23:18:05.108846 실제 api.themoviedb.org 에 잘못된 Token으로 요청
+# (debug 로그) — Authorization 은 Bearer *** 로 가려짐
+[TMDB 요청] GET https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=1&sort_by=popularity.desc&include_adult=false&include_video=false&with_genres=28%7C12
+[TMDB 요청 Header] {Authorization: Bearer ***, accept: application/json}
+[TMDB 요청 Query] {language: ko-KR, page: 1, sort_by: popularity.desc, include_adult: false, include_video: false, with_genres: 28|12}
+[TMDB 오류] https://api.themoviedb.org/3/discover/movie?language=ko-KR&page=1&sort_by=popularity.desc&include_adult=false&include_video=false&with_genres=28%7C12
+[TMDB 오류 내용] badResponse status=401 This exception was thrown because the response has a status code of 401 and RequestOptions.validateStatus was configured to throw for this status code.
+The status code of 401 has the following meaning: "Client error - the request contains bad syntax or cannot be fulfilled"
+Read more about status codes at https://developer.mozilla.org/en-US/docs/Web/HTTP/Status
+In order to resolve this exception you typically have either to verify and fix your request code or you have to fix the server code.
+
+[TMDB 오류 Body] {status_code: 7, status_message: Invalid API key: You must be granted a valid key., success: false}
+
+# release 조건(kDebugMode=false → Interceptor 미등록) 같은 요청의 로그 줄 수: 0
