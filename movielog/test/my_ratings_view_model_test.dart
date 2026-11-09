@@ -24,7 +24,7 @@ void main() {
     final viewModel = MyRatingsViewModel(
       FakeRatingApiService(),
       FakeTmdbMovieService(),
-      sampleMemberId,
+      1,
     );
     await viewModel.load();
     expect(viewModel.status, MyRatingsLoadStatus.empty);
@@ -38,7 +38,7 @@ void main() {
         sampleRating(ratingId: 2, movieId: 550),
       ]),
       tmdb,
-      sampleMemberId,
+      1,
     );
     await viewModel.load();
     await viewModel.load();
@@ -56,7 +56,7 @@ void main() {
         sampleRating(ratingId: 2, movieId: 13),
       ]),
       FakeTmdbMovieService(missingMovieIds: {13}),
-      sampleMemberId,
+      1,
     );
     await viewModel.load();
 
@@ -70,7 +70,7 @@ void main() {
     final notFound = MyRatingsViewModel(
       FakeRatingApiService(failStatusCode: 404),
       FakeTmdbMovieService(),
-      sampleMemberId,
+      1,
     );
     await notFound.load();
     expect(notFound.status, MyRatingsLoadStatus.error);
@@ -79,7 +79,7 @@ void main() {
     final badRequest = MyRatingsViewModel(
       FakeRatingApiService(failStatusCode: 400),
       FakeTmdbMovieService(),
-      sampleMemberId,
+      1,
     );
     await badRequest.load();
     expect(badRequest.message, 'memberId 형식을 다시 확인해 주세요.');

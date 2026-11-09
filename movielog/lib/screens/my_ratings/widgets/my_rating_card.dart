@@ -7,10 +7,18 @@ import '../../../widgets/tmdb_poster_image.dart';
 
 /// 평점 하나를 TMDB 영화 제목·포스터와 함께 보여주는 카드입니다.
 /// TMDB에서 영화를 찾지 못하면 placeholder를 보여주고 평점 기록은 그대로 유지합니다.
+/// [onEdit]·[onDelete]는 본인이 작성한 평점일 때만 전달하며, 없으면 버튼을 그리지 않습니다.
 class MyRatingCard extends StatelessWidget {
-  const MyRatingCard({super.key, required this.entry});
+  const MyRatingCard({
+    super.key,
+    required this.entry,
+    this.onEdit,
+    this.onDelete,
+  });
 
   final RatingWithMovie entry;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -87,10 +95,63 @@ class MyRatingCard extends StatelessWidget {
               ],
             ),
           ),
+          if (onEdit != null || onDelete != null) ...[
+            const SizedBox(width: 8),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (onEdit != null)
+                  _CardActionButton(label: '수정', onPressed: onEdit!),
+                if (onEdit != null && onDelete != null)
+                  const SizedBox(height: 4),
+                if (onDelete != null)
+                  _CardActionButton(
+                    label: '삭제',
+                    color: AppColors.error,
+                    onPressed: onDelete!,
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
   static String _twoDigits(int value) => value.toString().padLeft(2, '0');
+}
+
+/// 카드 오른쪽의 작은 수정·삭제 버튼입니다.
+class _CardActionButton extends StatelessWidget {
+  const _CardActionButton({
+    required this.label,
+    required this.onPressed,
+    this.color = AppColors.violet,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 32,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: color,
+          side: BorderSide(color: color),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          minimumSize: const Size(56, 32),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          textStyle: AppTextStyles.bodySmall.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        child: Text(label),
+      ),
+    );
+  }
 }
