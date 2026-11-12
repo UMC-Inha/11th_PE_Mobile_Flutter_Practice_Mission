@@ -1,0 +1,118 @@
+# Flutter(Chrome, :5173) -> 실패 주입 프록시(:3000) -> NestJS 백엔드(:3001, brownglasses/week06 커밋) -> 일회용 DB umc_movie_w7fe
+# 7주차 쓰기 흐름 요청 기록. 맨 앞 숫자는 프록시 시작 후 경과 초, 마지막은 응답 시간.
+# 요청 body의 password 값은 프록시가 ***로 바꿔서 기록했다. [harness]는 테스트 도구가 실패·지연을 주입한 시점이다.
+# '# curl(터미널)' 표시는 브라우저 앱이 아니라 터미널 curl이 보낸 요청이다(확인 직후 선점 가입, 평점 시드, 최종 상태 확인).
+# TMDB 요청(가짜 서버 :3300)은 이 기록에 없다.
+
+# 1. 회원가입 - 중복 확인
+   49.9s  GET    /members/nickname/%EC%BC%80%EB%B9%887  -> 200  5ms
+   66.6s  GET    /members/email/kevin7%40umc.com  -> 200  4ms
+
+# 2. 서버가 로컬은 통과하는 73자 비밀번호를 400으로 거부
+   90.7s  GET    /members/nickname/%EC%BC%80%EB%B9%887  -> 304  4ms
+  108.3s  POST   /members  -> 400  10ms  body={"email":"kevin7@umc.com","password":"***","nickname":"케빈7"}
+
+# 3. 최종 409 - 확인 직후 다른 사람이 먼저 가입(curl)
+  164.4s  GET    /members/nickname/%EC%BC%80%EB%B9%887  -> 304  6ms
+  168.4s  GET    /members/email/kevin7%40umc.com  -> 304  4ms
+  179.7s  POST   /members  -> 201  77ms  body={"email":"kevin7@umc.com","password":"***","nickname":"선점자7"}   # curl(터미널)
+  179.8s  POST   /members  -> 409  2ms  body={"email":"kevin7@umc.com","password":"***","nickname":"케빈7"}
+  196.0s  GET    /members/email/kevin7%40umc.com  -> 200  2ms
+
+# 3b. 같은 시나리오를 kevin7b로 한 번 더(스낵바 캡처)
+  220.1s  GET    /members/email/kevin7b%40umc.com  -> 200  5ms
+  222.6s  GET    /members/nickname/%EC%BC%80%EB%B9%887  -> 304  3ms
+  229.9s  POST   /members  -> 201  69ms  body={"email":"kevin7b@umc.com","password":"***","nickname":"선점자7b"}   # curl(터미널)
+  230.0s  POST   /members  -> 409  1ms  body={"email":"kevin7b@umc.com","password":"***","nickname":"케빈7"}
+
+# 4. 성공 가입(kevin7c) - 제출 중 상태(3초 지연)
+  246.7s  GET    /members/email/kevin7c%40umc.com  -> 200  5ms
+  249.2s  GET    /members/nickname/%EC%BC%80%EB%B9%887  -> 304  3ms
+  255.7s  [harness] signup-delay ?ms=3500
+  259.4s  POST   /members  -> 201  3583ms  body={"email":"kevin7c@umc.com","password":"***","nickname":"케빈7"}
+  267.8s  [harness] signup-delay ?ms=0
+
+# 5. 영화 550 상세 → 평점 Dialog → 등록
+  308.9s  POST   /members/5/ratings  -> 201  6ms  body={"movieId":550,"score":4,"comment":"반전이 좋았다"}
+
+# 6. 같은 영화에 다시 등록 → 409(입력 유지)
+  337.4s  POST   /members/5/ratings  -> 409  4ms  body={"movieId":550,"score":3,"comment":"다시 남겨 본다"}
+
+# 7. 마이페이지 내가 등록한 평점
+  360.9s  POST   /members/5/ratings  -> 201  5ms  body={"movieId":155,"score":5,"comment":"묵직하다"}   # curl(터미널)
+  360.9s  POST   /members/5/ratings  -> 201  3ms  body={"movieId":27205,"score":4}   # curl(터미널)
+  360.9s  POST   /members/5/ratings  -> 201  4ms  body={"movieId":680,"score":2,"comment":"그저 그랬다"}   # curl(터미널)
+  360.9s  GET    /members/5/ratings  -> 200  2ms   # curl(터미널)
+  367.0s  GET    /members/5/ratings  -> 200  3ms
+
+# 8. 수정(550: 4점 → 5점, 코멘트 변경)
+  398.1s  PATCH  /members/5/ratings/4  -> 200  8ms  body={"score":5,"comment":"다시 봐도 좋다"}
+  398.1s  GET    /members/5/ratings  -> 200  1ms
+
+# 9. 저장 성공 + 재조회(GET) 실패 → 조회만 다시
+  407.8s  [harness] fail-get-ratings ?n=1
+  420.6s  PATCH  /members/5/ratings/6  -> 200  4ms  body={"score":5,"comment":null}
+  420.6s  GET    /members/5/ratings  -> 503  0ms  [injected: GET ratings failure]
+  436.4s  GET    /members/5/ratings  -> 200  2ms
+
+# 10. 삭제(펄프 픽션 rating 7): 확인 Dialog 취소 → DELETE 없음, 다시 확인 → DELETE
+  472.7s  DELETE /members/5/ratings/7  -> 204  8ms
+  472.7s  GET    /members/5/ratings  -> 200  3ms
+  497.0s  POST   /members/5/ratings  -> 201  7ms  body={"movieId":13,"score":3,"comment":"무난하다"}   # curl(터미널)
+  497.0s  POST   /members/5/ratings  -> 201  4ms  body={"movieId":238,"score":5,"comment":"거절할 수 없는 제안"}   # curl(터미널)
+  497.0s  POST   /members/5/ratings  -> 201  4ms  body={"movieId":680,"score":3}   # curl(터미널)
+  497.0s  GET    /members/5/ratings  -> 200  2ms   # curl(터미널)
+
+# 11. Challenge 다중 삭제(평점 6개에서 시작)
+  500.1s  GET    /members/5/ratings  -> 200  3ms
+  524.9s  [harness] write-delay ?ms=2500
+  533.7s  DELETE /members/5/ratings/10  -> 204  2516ms
+  536.2s  DELETE /members/5/ratings/9  -> 204  2507ms
+  538.7s  DELETE /members/5/ratings/8  -> 204  2508ms
+  538.7s  GET    /members/5/ratings  -> 200  5ms
+
+# 11b. 다중 삭제 일부 실패(rating 5만 500)
+  561.9s  [harness] fail-delete ?id=5
+  561.9s  [harness] write-delay ?ms=3000
+  613.7s  DELETE /members/5/ratings/6  -> 204  3008ms
+  616.8s  DELETE /members/5/ratings/5  -> 500  3003ms  [injected: DELETE failure]
+  619.8s  DELETE /members/5/ratings/4  -> 204  3005ms
+  619.8s  GET    /members/5/ratings  -> 200  3ms
+  639.3s  [harness] write-delay ?ms=1500
+
+# 11c. 남은 선택(rating 5)로 다시 시도 → 실패 스낵바 캡처
+  646.6s  DELETE /members/5/ratings/5  -> 500  1501ms  [injected: DELETE failure]
+  646.6s  GET    /members/5/ratings  -> 304  4ms
+  660.2s  [harness] fail-delete-clear 
+  660.2s  [harness] write-delay ?ms=0
+  660.2s  POST   /members/5/ratings  -> 201  4ms  body={"movieId":238,"score":4,"comment":"다시 본다"}   # curl(터미널)
+  663.3s  DELETE /members/5/ratings/5  -> 204  5ms
+  663.3s  GET    /members/5/ratings  -> 200  2ms
+  685.3s  [harness] write-delay ?ms=0
+
+# 10b. 마지막 항목 단건 삭제 → Empty
+  688.4s  DELETE /members/5/ratings/11  -> 204  5ms
+  688.4s  GET    /members/5/ratings  -> 200  2ms
+
+# 12. 새 세션에서 /my/ratings (가입 전)
+  713.6s  GET    /members/5/ratings  -> 200  5ms   # curl(터미널)
+
+# 13. 버그 A·B 수정 후 재확인(새 회원 kevin8)
+  792.9s  GET    /members/nickname/%EC%BC%80%EB%B9%888  -> 200  10ms
+  796.9s  GET    /members/email/kevin8%40umc.com  -> 200  3ms
+  802.5s  POST   /members  -> 201  81ms  body={"email":"kevin8@umc.com","password":"***","nickname":"케빈8"}
+  815.0s  POST   /members/6/ratings  -> 201  4ms  body={"movieId":550,"score":4,"comment":"수정 후 재확인"}   # curl(터미널)
+  815.0s  POST   /members/6/ratings  -> 201  4ms  body={"movieId":155,"score":5,"comment":"묵직하다"}   # curl(터미널)
+  815.0s  POST   /members/6/ratings  -> 201  3ms  body={"movieId":27205,"score":3}   # curl(터미널)
+  815.0s  GET    /members/6/ratings  -> 200  2ms   # curl(터미널)
+  819.1s  GET    /members/6/ratings  -> 200  4ms
+  827.9s  [harness] fail-get-ratings ?n=1
+  831.0s  PATCH  /members/6/ratings/12  -> 200  7ms  body={"score":4,"comment":"수정 후 재확인"}
+  831.0s  GET    /members/6/ratings  -> 503  0ms  [injected: GET ratings failure]
+  842.1s  GET    /members/6/ratings  -> 200  2ms
+  855.1s  [harness] write-delay ?ms=3000
+  861.3s  DELETE /members/6/ratings/14  -> 204  3008ms
+  864.3s  DELETE /members/6/ratings/13  -> 204  3006ms
+  864.3s  GET    /members/6/ratings  -> 200  3ms
+  876.9s  [harness] reset 
+  876.9s  GET    /members/6/ratings  -> 200  2ms   # curl(터미널)
