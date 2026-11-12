@@ -1,0 +1,21 @@
+flutter test (offline, no network) — 2026-11-12 16:26
+Flutter 3.47.5 / Dart 3.13.4
++193 ~3: All tests passed!  (파일별로 따로 실행한 합계: 통과 193, 건너뜀 3, 실패 0)
+건너뜀은 실제 TMDB 토큰이 필요한 test/live 테스트다(MOVIELOG_LIVE=1 일 때만 실행).
+
+  test/live/fixture_evidence_test.dart: 건너뜀 1
+  test/live/live_evidence_test.dart: 건너뜀 1
+  test/live/tmdb_failure_log_test.dart: 건너뜀 1
+  test/movielog_button_test.dart: 10
+  test/my_ratings_edit_screen_test.dart: 18
+  test/my_ratings_screen_test.dart: 8
+  test/my_ratings_view_model_test.dart: 12
+  test/rating_dialog_test.dart: 12
+  test/rating_write_view_model_test.dart: 25
+  test/sign_up_duplicate_check_test.dart: 8
+  test/sign_up_submit_test.dart: 17
+  test/sign_up_view_model_test.dart: 18
+  test/tmdb_data_test.dart: 14
+  test/view_model_test.dart: 17
+  test/widget_test.dart: 14
+  test/write_api_test.dart: 20

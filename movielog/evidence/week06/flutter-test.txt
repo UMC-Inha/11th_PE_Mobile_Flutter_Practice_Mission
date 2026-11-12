@@ -1,0 +1,14 @@
+flutter test (offline, no network) — 2026-11-05 22:28
+Flutter 3.47.5 / Dart 3.13.4
+00:10 +100 ~3: All tests passed!
+
+파일별 테스트 수:
+  test/movielog_button_test.dart: 10
+  test/my_ratings_screen_test.dart: 8
+  test/my_ratings_view_model_test.dart: 12
+  test/sign_up_duplicate_check_test.dart: 8
+  test/sign_up_view_model_test.dart: 18
+  test/support.dart: 0
+  test/tmdb_data_test.dart: 14
+  test/view_model_test.dart: 17
+  test/widget_test.dart: 13
