@@ -14,12 +14,13 @@ void main() {
     api = FakeMovieLogApiService();
   });
 
-  MyRatingsViewModel createViewModel() => MyRatingsViewModel(api, tmdb);
+  MyRatingsViewModel createViewModel({int memberId = 1}) =>
+      MyRatingsViewModel(api, tmdb, memberId: memberId);
 
   test('조회 대상 memberId는 학습용 상수 1이다', () async {
     final vm = createViewModel();
     await vm.load();
-    expect(vm.memberId, sampleMemberId);
+    expect(vm.memberId, 1);
     expect(api.ratingMemberIds, [1]);
   });
 

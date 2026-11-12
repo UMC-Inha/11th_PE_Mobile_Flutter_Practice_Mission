@@ -11,6 +11,7 @@ import 'package:movielog/features/movies/presentation/widgets/retry_dialog.dart'
 import 'package:movielog/features/rating/presentation/widgets/movie_rating_dialog.dart';
 import 'package:movielog/features/sign_up/presentation/sign_up_screen.dart';
 import 'package:movielog/features/start/presentation/start_screen.dart';
+import 'package:movielog/view_models/learning_member_session.dart';
 import 'package:movielog/widgets/tmdb_poster_image.dart';
 
 import 'support.dart';
@@ -44,11 +45,15 @@ void main() {
   late FakeTmdbMovieService tmdb;
   late FakeMovieLogApiService api;
 
-  Widget app(String location) => MovieLogApp(
+  /// [memberId]를 주면 회원가입을 마친 상태(학습용 세션에 memberId가 있는 상태)로 시작한다.
+  Widget app(String location, {int? memberId}) => MovieLogApp(
     initialLocation: location,
     tmdbService: tmdb,
     movieLogApiService: api,
     preferences: MemoryMoviePreferences(),
+    session: memberId == null
+        ? null
+        : (LearningMemberSession()..setMemberId(memberId)),
   );
 
   Future<void> settle(WidgetTester tester) async {
@@ -62,7 +67,7 @@ void main() {
     api = FakeMovieLogApiService();
   });
 
-  testWidgets('회원가입: 서버 중복 확인을 통과해야 가입 버튼이 켜지고 홈으로 간다', (tester) async {
+  testWidgets('회원가입: 중복 확인을 통과해야 가입 버튼이 켜지고, 가입하면 영화 목록으로 간다', (tester) async {
     await tester.pumpWidget(app(AppRoutes.start));
     await tester.tap(find.byKey(startButtonKey));
     await settle(tester);
@@ -76,7 +81,7 @@ void main() {
 
     await tester.enterText(find.byKey(nicknameFieldKey), '수현');
     await tester.enterText(find.byKey(emailFieldKey), 'kevin@umc.com');
-    await tester.enterText(find.byKey(passwordFieldKey), 'password1234');
+    await tester.enterText(find.byKey(passwordFieldKey), 'Password1234!');
     await tester.tap(find.byKey(termsCheckboxKey));
     await tester.pump();
     expect(signUp().onPressed, isNull); // 아직 중복 확인 전
@@ -102,7 +107,15 @@ void main() {
     await tester.ensureVisible(find.byKey(signUpButtonKey));
     await tester.tap(find.byKey(signUpButtonKey));
     await settle(tester);
-    expect(find.text('인기 영화'), findsOneWidget);
+    await settle(tester); // 화면 전환 뒤 시작되는 영화 목록 로딩까지 기다린다
+    // 가입 요청이 실제로 나갔고(비밀번호는 그대로, 이메일·닉네임은 trim), 영화 목록으로 이동했다.
+    expect(api.signUps, hasLength(1));
+    expect(api.signUps.single.toJson(), {
+      'email': 'kevin@umc.com',
+      'password': 'Password1234!',
+      'nickname': '케빈',
+    });
+    expect(find.byType(MovieListScreen), findsOneWidget);
     expect(find.byType(BackButton), findsNothing);
   });
 
@@ -124,7 +137,7 @@ void main() {
   });
 
   testWidgets('홈: Popular 앞 5개만 표시, 요청은 한 번, 카드 → 상세(TMDB id)', (tester) async {
-    await tester.pumpWidget(app(AppRoutes.home));
+    await tester.pumpWidget(app(AppRoutes.home, memberId: 101));
     expect(find.bySemanticsLabel('인기 영화를 불러오는 중'), findsOneWidget);
     await settle(tester);
 
@@ -162,9 +175,12 @@ void main() {
     expect(tmdb.popularCalls, 1); // 돌아와도 다시 요청하지 않는다
   });
 
-  testWidgets('상세: 평점 Dialog 결과가 TMDB id를 movieId로 가진다', (tester) async {
+  testWidgets('상세: 별점·코멘트를 저장하면 TMDB id가 movieId인 요청이 나가고 Snackbar가 보인다', (
+    tester,
+  ) async {
     tmdb.moviesById[550] = movie(550, title: '파이트 클럽', overview: '');
-    await tester.pumpWidget(app(AppRoutes.movieDetail(550)));
+    api.ratings = []; // 아직 평점을 남기지 않은 회원
+    await tester.pumpWidget(app(AppRoutes.movieDetail(550), memberId: 101));
     await settle(tester);
     // 주소로 바로 열면 Movie Details를 조회한다.
     expect(tmdb.movieCalls, [550]);
@@ -178,13 +194,54 @@ void main() {
     await tester.ensureVisible(find.byKey(rateButtonKey));
     await tester.tap(find.byKey(rateButtonKey));
     await settle(tester);
+    // 별을 고르기 전에는 코멘트를 입력해도 저장할 수 없다.
+    await tester.enterText(find.byKey(ratingCommentFieldKey), '  반전이 좋았다  ');
+    await tester.pump();
+    expect(
+      tester
+          .widget<ElevatedButton>(
+            find.descendant(
+              of: find.byKey(saveRatingButtonKey),
+              matching: find.byType(ElevatedButton),
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
     await tester.tap(dialogStar(3));
     await tester.pump();
     expect(find.text('4점'), findsOneWidget);
     await tester.tap(find.byKey(saveRatingButtonKey));
     await settle(tester);
-    expect(find.textContaining('movieId 550에 4점'), findsOneWidget);
-    expect(find.text('내 평점 4점'), findsOneWidget);
+
+    expect(api.createdRatings, hasLength(1));
+    expect(api.createdRatings.single.memberId, 101);
+    expect(api.createdRatings.single.request.toJson(), {
+      'movieId': 550, // 배열 index가 아니라 TMDB id
+      'score': 4,
+      'comment': '반전이 좋았다', // trim
+    });
+    expect(find.byType(MovieRatingDialog), findsNothing);
+    expect(find.textContaining('평점을 등록했습니다'), findsOneWidget);
+    expect(find.byKey(myRatingLabelKey), findsOneWidget);
+  });
+
+  testWidgets('상세: 회원가입 전에는 평점 등록 버튼이 비활성화되고 가입 화면으로 안내한다', (tester) async {
+    tmdb.moviesById[550] = movie(550, title: '파이트 클럽');
+    await tester.pumpWidget(app(AppRoutes.movieDetail(550)));
+    await settle(tester);
+
+    await tester.ensureVisible(find.byKey(rateButtonKey));
+    expect(
+      tester.widget<FilledButton>(find.byKey(rateButtonKey)).onPressed,
+      isNull,
+    );
+    expect(find.byKey(needSignUpHintKey), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(goSignUpButtonKey));
+    await tester.tap(find.byKey(goSignUpButtonKey));
+    await settle(tester);
+    expect(find.byKey(nicknameFieldKey), findsOneWidget);
   });
 
   testWidgets('목록: Loading → Success 30편, 장르 Chip은 with_genres 재요청', (

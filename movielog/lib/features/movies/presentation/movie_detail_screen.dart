@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:go_router/go_router.dart';
+import 'package:movielog/app/app_router.dart';
 import 'package:movielog/core/theme/app_theme.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
 import 'package:movielog/features/movies/presentation/widgets/movie_card.dart';
 import 'package:movielog/features/rating/presentation/widgets/movie_rating_dialog.dart';
 import 'package:movielog/view_models/movie_detail_view_model.dart';
+import 'package:movielog/view_models/submit_status.dart';
 import 'package:movielog/widgets/tmdb_poster_image.dart';
 import 'package:provider/provider.dart';
 
 const favoriteButtonKey = Key('favoriteButton');
 const rateButtonKey = Key('rateButton');
 const tmdbIdLabelKey = Key('tmdbIdLabel');
+const myRatingLabelKey = Key('myRatingLabel');
+const needSignUpHintKey = Key('needSignUpHint');
+const goSignUpButtonKey = Key('goSignUpButton');
 
 class MovieDetailScreen extends StatelessWidget {
   const MovieDetailScreen({super.key});
@@ -21,23 +26,24 @@ class MovieDetailScreen extends StatelessWidget {
     MovieDetailViewModel viewModel,
   ) async {
     final movie = viewModel.movie!;
-    final score = await showMovieRatingDialog(
+    final saved = await showMovieRatingDialog(
       context,
       movieTitle: movie.title,
-      initialRating: (viewModel.myRating?.score ?? 0).toDouble(),
+      onSubmit: (score, comment) async {
+        // 저장은 Dialog 안에서 일어난다. 실패하면 서버 message를 Dialog에 보여주고 입력은 유지된다.
+        await viewModel.createRating(score: score, comment: comment);
+        if (viewModel.submitStatus != SubmitStatus.success) {
+          throw RatingSaveException(viewModel.submitMessage ?? '저장에 실패했습니다.');
+        }
+      },
     );
-    if (score == null || !context.mounted) return;
-    // 평점 요청의 movieId = TMDB id (배열 index가 아니다)
-    final request = viewModel.rate(score.round());
-    debugPrint('[평점 요청 준비] ${request.toJson()}');
+    // Dialog가 저장까지 마치고 true를 돌려준 뒤에만 안내한다. await 뒤에는 mounted를 다시 확인한다.
+    if (!context.mounted || saved != true) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(
-          content: Text(
-            'movieId ${request.movieId}에 ${request.score}점을 남겼어요. '
-            '(서버 저장은 6주차)',
-          ),
+        const SnackBar(
+          content: Text('평점을 등록했습니다. 마이페이지의 "내가 등록한 평점"에서 확인할 수 있습니다.'),
         ),
       );
   }
@@ -124,7 +130,8 @@ class MovieDetailScreen extends StatelessWidget {
             const SizedBox(height: 28),
             if (viewModel.myRating != null) ...[
               Text(
-                '내 평점 ${viewModel.myRating!.score}점',
+                '내 평점 ${viewModel.myRating!.score}점 · 수정·삭제는 마이페이지에서',
+                key: myRatingLabelKey,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: AppColors.primary,
@@ -135,13 +142,30 @@ class MovieDetailScreen extends StatelessWidget {
             ],
             FilledButton.icon(
               key: rateButtonKey,
-              onPressed: () => _rate(context, viewModel),
+              // 회원가입으로 얻은 memberId가 없으면 어느 회원의 평점인지 알 수 없어 비활성화한다.
+              onPressed: viewModel.canRate
+                  ? () => _rate(context, viewModel)
+                  : null,
               icon: const Icon(Icons.star_rounded),
-              label: Text(viewModel.myRating == null ? '평점 남기기' : '평점 수정하기'),
+              label: const Text('평점 남기기'),
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(54),
               ),
             ),
+            if (!viewModel.canRate) ...[
+              const SizedBox(height: 8),
+              const Text(
+                '먼저 학습용 회원가입을 완료해 주세요.',
+                key: needSignUpHintKey,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.mutedText),
+              ),
+              TextButton(
+                key: goSignUpButtonKey,
+                onPressed: () => context.go(AppRoutes.signUp),
+                child: const Text('회원가입 하러 가기'),
+              ),
+            ],
             const SizedBox(height: 12),
             Text(
               'TMDB 영화 ID ${movie.id}',

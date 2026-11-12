@@ -6,6 +6,7 @@ import 'package:movielog/app/app_router.dart';
 import 'package:movielog/app/movie_log_app.dart';
 import 'package:movielog/features/my_page/presentation/my_page_screen.dart';
 import 'package:movielog/features/my_page/presentation/my_ratings_screen.dart';
+import 'package:movielog/view_models/learning_member_session.dart';
 import 'package:movielog/widgets/tmdb_poster_image.dart';
 
 import 'support.dart';
@@ -39,12 +40,21 @@ void main() {
       ..[155] = movie(155, title: '다크 나이트');
   });
 
-  Future<void> open(WidgetTester tester, String location) => tester.pumpWidget(
+  /// 회원가입을 마친 상태(memberId 1)로 시작한다. session을 null로 주면 가입 전 상태다.
+  Future<void> open(
+    WidgetTester tester,
+    String location, {
+    LearningMemberSession? session,
+    bool signedUp = true,
+  }) => tester.pumpWidget(
     MovieLogApp(
       initialLocation: location,
       tmdbService: tmdb,
       movieLogApiService: api,
       preferences: MemoryMoviePreferences(),
+      session: signedUp
+          ? (session ?? (LearningMemberSession()..setMemberId(1)))
+          : null,
     ),
   );
 

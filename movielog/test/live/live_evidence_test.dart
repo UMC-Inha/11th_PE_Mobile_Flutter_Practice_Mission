@@ -101,7 +101,7 @@ void main() {
         multi30 = list.movies;
 
         progress('1-5 자체 백엔드');
-        await MyRatingsViewModel(api, tmdb).load();
+        await MyRatingsViewModel(api, tmdb, memberId: 1).load();
         await api.checkNickname('수현');
         await api.checkNickname('케빈');
         await api.checkEmail('kevin@umc.com');
