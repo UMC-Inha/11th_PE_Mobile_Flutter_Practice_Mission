@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
+import '../../view_models/auth_view_model.dart';
 import '../../widgets/common_app_bar.dart';
 import 'widgets/edit_profile_button.dart';
 import 'widgets/favorite_genres.dart';
@@ -14,17 +16,34 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthViewModel>();
+    final member = auth.member;
+
     return Scaffold(
-      appBar: const CommonAppBar(title: '내 프로필'),
+      appBar: CommonAppBar(
+        title: '내 프로필',
+        actions: [
+          TextButton(onPressed: auth.logout, child: const Text('로그아웃')),
+        ],
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const ProfileHeader(),
+              ProfileHeader(
+                nickname: member?.nickname ?? '',
+                email: member?.email ?? '',
+              ),
               const SizedBox(height: 24),
-              const Center(child: EditProfileButton()),
+              Center(
+                child: EditProfileButton(
+                  onPressed: member == null
+                      ? null
+                      : () => context.push('/my/profile/edit'),
+                ),
+              ),
               const SizedBox(height: 32),
               const ProfileStats(),
               const SizedBox(height: 40),

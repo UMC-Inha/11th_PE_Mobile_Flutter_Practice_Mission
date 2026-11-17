@@ -17,13 +17,15 @@ class MovieRatingSummary extends StatelessWidget {
 
   /// 평가 수입니다. 값이 없으면 표시하지 않습니다.
   final int? ratingCount;
-  final double? myRating;
+
+  /// 내가 남긴 서버 평점(1~5 정수)입니다.
+  final int? myRating;
 
   static String _formatCount(int count) {
     return count.toString().replaceAllMapped(
-          RegExp(r'\B(?=(\d{3})+(?!\d))'),
-          (match) => ',',
-        );
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (match) => ',',
+    );
   }
 
   @override
@@ -39,10 +41,7 @@ class MovieRatingSummary extends StatelessWidget {
           itemSize: 22,
           unratedColor: AppColors.chipGray,
           itemBuilder: (context, index) {
-            return const Icon(
-              Icons.star,
-              color: AppColors.violet,
-            );
+            return const Icon(Icons.star, color: AppColors.violet);
           },
         ),
         Text.rich(
@@ -50,12 +49,16 @@ class MovieRatingSummary extends StatelessWidget {
             children: [
               TextSpan(
                 text: averageRating.toStringAsFixed(1),
-                style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600),
+                style: AppTextStyles.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               if (ratingCount case final count?)
                 TextSpan(
                   text: ' (${_formatCount(count)})',
-                  style: AppTextStyles.bodySmall.copyWith(color: AppColors.darkGray),
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: AppColors.darkGray,
+                  ),
                 ),
             ],
           ),

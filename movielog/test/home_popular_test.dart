@@ -5,13 +5,17 @@ import 'package:provider/provider.dart';
 
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
 import 'package:movielog/screens/detail/movie_detail_screen.dart';
+import 'package:movielog/view_models/movie_detail_view_model.dart';
 import 'package:movielog/screens/home/widgets/featured_movie_banner.dart';
 
 import 'package:movielog/screens/home/home_screen.dart';
 import 'package:movielog/theme/app_theme.dart';
 import 'package:movielog/view_models/movie_home_view_model.dart';
+import 'package:movielog/view_models/session_rating_store.dart';
 import 'package:movielog/widgets/tmdb_movie_card.dart';
 
+import 'fakes/fake_auth.dart';
+import 'fakes/fake_rating_api_service.dart';
 import 'fakes/fake_tmdb_movie_service.dart';
 
 Widget _homeWith(FakeTmdbMovieService service) {
@@ -71,6 +75,7 @@ void main() {
 
   testWidgets('추천 배너를 누르면 TMDB id로 상세에 이동하고 같은 영화를 보여준다', (tester) async {
     final service = FakeTmdbMovieService(popularIds: [969681, 2, 3]);
+    final auth = (await tester.runAsync(signedInAuth))!;
     final router = GoRouter(
       initialLocation: '/home',
       routes: [
@@ -83,7 +88,15 @@ void main() {
         ),
         GoRoute(
           path: '/movies/:movieId',
-          builder: (context, state) => MovieDetailScreen(movie: state.extra as TmdbMovieDto?),
+          builder: (context, state) => ChangeNotifierProvider<MovieDetailViewModel>(
+            create: (_) => MovieDetailViewModel(
+              FakeRatingApiService(),
+              auth,
+              SessionRatingStore(auth),
+              state.extra! as TmdbMovieDto,
+            ),
+            child: const MovieDetailScreen(),
+          ),
         ),
       ],
     );
