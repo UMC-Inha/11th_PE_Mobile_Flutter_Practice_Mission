@@ -8,10 +8,12 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 
 import 'package:provider/provider.dart';
 
-import 'package:movielog/data/models/member_rating_dto.dart';
-import 'package:movielog/data/services/member_service.dart';
+import 'dart:async';
+
+import 'package:movielog/data/services/member_check_service.dart';
 import 'package:movielog/movie_log_app.dart';
-import 'package:movielog/view_models/my_ratings_view_model.dart';
+import 'package:movielog/screens/my_ratings/my_ratings_screen.dart';
+import 'package:movielog/view_models/sign_up_view_model.dart';
 import 'package:movielog/router/app_router.dart';
 import 'package:movielog/screens/detail/movie_detail_screen.dart';
 import 'package:movielog/screens/movies/widgets/movie_list_error.dart';
@@ -24,25 +26,52 @@ import 'package:movielog/screens/signup/sign_up_screen.dart';
 import 'package:movielog/start_screen.dart';
 import 'package:movielog/theme/app_theme.dart';
 
-import 'fakes/fake_member_service.dart';
+import 'fakes/fake_member_check_service.dart';
+import 'fakes/fake_rating_api_service.dart';
 import 'fakes/fake_tmdb_movie_service.dart';
 
-/// 프로필·회원가입 화면이 쓰는 서버 Service와 ViewModel을 가짜로 함께 등록합니다.
-Widget _appWith(Widget home, {FakeMemberService? memberService}) {
-  final service = memberService ?? FakeMemberService();
+/// 회원가입 화면이 쓰는 서버 Service와 ViewModel을 가짜로 함께 등록합니다.
+Widget _appWith(Widget home, {FakeMemberCheckService? memberCheckService}) {
+  final service = memberCheckService ?? FakeMemberCheckService();
   return MultiProvider(
     providers: [
-      Provider<MemberService>.value(value: service),
-      ChangeNotifierProvider<MyRatingsViewModel>(
-        create: (_) => MyRatingsViewModel(service, memberId: 1)..load(),
+      Provider<MemberCheckService>.value(value: service),
+      ChangeNotifierProvider<SignUpViewModel>(
+        create: (_) => SignUpViewModel(service),
       ),
     ],
     child: MaterialApp(theme: AppTheme.light, home: home),
   );
 }
 
+/// 실제 서버 대신 가짜 Service를 넣은 앱 전체입니다.
+MovieLogApp _fakeApp({
+  FakeMemberCheckService? memberCheckService,
+  FakeRatingApiService? ratingApiService,
+  FakeTmdbMovieService? tmdbMovieService,
+}) {
+  // TMDB를 넣지 않으면 실제 Service를 쓰고, 테스트 환경의 HTTP 요청은 모두 실패합니다.
+  return MovieLogApp(
+    memberCheckService: memberCheckService ?? FakeMemberCheckService(),
+    ratingApiService: ratingApiService ?? FakeRatingApiService(),
+    tmdbMovieService: tmdbMovieService,
+  );
+}
+
+final _nicknameField = find.widgetWithText(TextFormField, '닉네임을 입력해주세요');
+final _emailField = find.widgetWithText(TextFormField, '이메일 주소를 입력해주세요');
+final _passwordField = find.widgetWithText(TextFormField, '비밀번호를 입력해주세요');
+Finder get _nicknameCheckButton => find.widgetWithText(ElevatedButton, '중복 확인').first;
+Finder get _emailCheckButton => find.widgetWithText(ElevatedButton, '중복 확인').last;
+
 Widget _appWithKeyboard(Widget home, {double keyboardHeight = 300}) {
-  return MaterialApp(
+  final service = FakeMemberCheckService();
+  return MultiProvider(
+    providers: [
+      Provider<MemberCheckService>.value(value: service),
+      ChangeNotifierProvider<SignUpViewModel>(create: (_) => SignUpViewModel(service)),
+    ],
+    child: MaterialApp(
     theme: AppTheme.light,
     builder: (context, child) => MediaQuery(
       data: MediaQuery.of(context).copyWith(
@@ -51,6 +80,7 @@ Widget _appWithKeyboard(Widget home, {double keyboardHeight = 300}) {
       child: child!,
     ),
     home: home,
+    ),
   );
 }
 
@@ -75,7 +105,7 @@ void main() {
   testWidgets('앱을 실행하면 시작 화면이 표시되고, 시작하기를 누르면 뒤로가기 없는 회원가입 화면으로 이동한다',
       (WidgetTester tester) async {
     AppRouter.router.go('/start');
-    await tester.pumpWidget(MovieLogApp(memberService: FakeMemberService()));
+    await tester.pumpWidget(_fakeApp());
     await tester.pumpAndSettle();
     expect(find.text('시작하기'), findsOneWidget);
 
@@ -90,14 +120,17 @@ void main() {
   testWidgets('회원가입을 완료하면 뒤로가기 없는 홈 화면으로 이동한다', (WidgetTester tester) async {
     _usePhoneSize(tester, width: 400, height: 900);
     AppRouter.router.go('/register');
-    await tester.pumpWidget(MovieLogApp(memberService: FakeMemberService()));
+    await tester.pumpWidget(_fakeApp());
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.widgetWithText(TextFormField, '닉네임을 입력해주세요'), '무비러버');
-    await tester.enterText(find.widgetWithText(TextFormField, '이메일 주소를 입력해주세요'), 'movielover@movielog.com');
-    await tester.enterText(find.widgetWithText(TextFormField, '비밀번호를 입력해주세요'), 'password1');
-    await tester.tap(find.byType(Checkbox));
+    await tester.enterText(_nicknameField, '무비러버');
+    await tester.enterText(_emailField, 'movielover@movielog.com');
+    await tester.enterText(_passwordField, 'password1');
     await tester.pump();
+    await tester.tap(_nicknameCheckButton);
+    await tester.tap(_emailCheckButton);
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('가입하기'));
     await tester.pumpAndSettle();
 
@@ -108,7 +141,7 @@ void main() {
 
   testWidgets('NavigationBar로 탭을 전환하면 선택 상태와 화면이 일치한다', (WidgetTester tester) async {
     AppRouter.router.go('/home');
-    await tester.pumpWidget(MovieLogApp(memberService: FakeMemberService()));
+    await tester.pumpWidget(_fakeApp());
     await tester.pumpAndSettle();
 
     NavigationBar navBar() => tester.widget<NavigationBar>(find.byType(NavigationBar));
@@ -127,7 +160,7 @@ void main() {
 
   testWidgets('extra 없이 URL로 직접 진입하면 영화를 찾을 수 없다는 안내를 보여준다', (WidgetTester tester) async {
     AppRouter.router.go('/movies/2');
-    await tester.pumpWidget(MovieLogApp(memberService: FakeMemberService()));
+    await tester.pumpWidget(_fakeApp());
     await tester.pumpAndSettle();
 
     expect(find.text('영화를 찾을 수 없어요.'), findsOneWidget);
@@ -135,7 +168,7 @@ void main() {
 
   testWidgets('웹·데스크톱에서도 마우스로 끌어 가로 목록을 스크롤할 수 있다', (WidgetTester tester) async {
     AppRouter.router.go('/start');
-    await tester.pumpWidget(MovieLogApp(memberService: FakeMemberService()));
+    await tester.pumpWidget(_fakeApp());
 
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(app.scrollBehavior!.dragDevices, contains(PointerDeviceKind.mouse));
@@ -143,7 +176,7 @@ void main() {
 
   testWidgets('영화 목록 요청이 실패하면 Error 상태와 재시도 버튼을 보여준다', (WidgetTester tester) async {
     AppRouter.router.go('/movies');
-    await tester.pumpWidget(MovieLogApp(memberService: FakeMemberService()));
+    await tester.pumpWidget(_fakeApp());
     await tester.pumpAndSettle();
 
     expect(find.byType(MovieListError), findsOneWidget);
@@ -242,19 +275,56 @@ void main() {
     expect(find.text('올바른 이메일 형식이 아니에요.'), findsOneWidget);
   });
 
-  testWidgets('닉네임·이메일·비밀번호를 모두 유효하게 입력하고 약관에 동의하면 버튼이 활성화된다', (WidgetTester tester) async {
+  testWidgets('형식이 유효하고 두 중복 확인을 통과한 뒤 약관에 동의하면 버튼이 활성화된다', (WidgetTester tester) async {
+    _usePhoneSize(tester, width: 400, height: 900);
     await tester.pumpWidget(_appWith(const SignUpScreen()));
 
-    await tester.enterText(find.widgetWithText(TextFormField, '닉네임을 입력해주세요'), '무비러버');
-    await tester.enterText(find.widgetWithText(TextFormField, '이메일 주소를 입력해주세요'), 'movielover@movielog.com');
-    await tester.enterText(find.widgetWithText(TextFormField, '비밀번호를 입력해주세요'), 'password1');
-    await tester.pump();
-    expect(_submitButton(tester).onPressed, isNull);
-
+    await tester.enterText(_nicknameField, '무비러버');
+    await tester.enterText(_emailField, 'movielover@movielog.com');
+    await tester.enterText(_passwordField, 'password1');
     await tester.tap(find.byType(Checkbox));
     await tester.pump();
+    // 중복 확인 전에는 가입할 수 없습니다.
+    expect(_submitButton(tester).onPressed, isNull);
 
+    await tester.tap(_nicknameCheckButton);
+    await tester.tap(_emailCheckButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('사용할 수 있는 닉네임입니다.'), findsOneWidget);
+    expect(find.text('사용할 수 있는 이메일입니다.'), findsOneWidget);
     expect(_submitButton(tester).onPressed, isNotNull);
+  });
+
+  testWidgets('중복 확인 중에는 버튼이 비활성화되고 가운데에 인디케이터만 보인다', (WidgetTester tester) async {
+    final service = FakeMemberCheckService()..gate = Completer<void>();
+    await tester.pumpWidget(_appWith(const SignUpScreen(), memberCheckService: service));
+
+    await tester.enterText(_nicknameField, '무비러버');
+    await tester.pump();
+    await tester.tap(_nicknameCheckButton);
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.widgetWithText(ElevatedButton, '중복 확인'), findsOneWidget);
+
+    service.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('사용할 수 있는 닉네임입니다.'), findsOneWidget);
+  });
+
+  testWidgets('중복 확인 실패는 중복 응답과 다른 문구로 보여준다', (WidgetTester tester) async {
+    final service = FakeMemberCheckService(fail: true);
+    await tester.pumpWidget(_appWith(const SignUpScreen(), memberCheckService: service));
+
+    await tester.enterText(_nicknameField, '무비러버');
+    await tester.pump();
+    await tester.tap(_nicknameCheckButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('중복 확인에 실패했습니다. 다시 시도해 주세요.'), findsOneWidget);
+    expect(find.text('이미 사용 중인 닉네임입니다.'), findsNothing);
   });
 
   testWidgets('좁은 화면에서 회원가입 화면이 넘치지 않는다', (WidgetTester tester) async {
@@ -271,40 +341,92 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('프로필 화면은 서버에서 받은 내 평점 기록을 보여준다', (WidgetTester tester) async {
-    final service = FakeMemberService(ratings: [
-      MemberRatingDto(
-        ratingId: 1,
-        movieId: 550,
-        score: 5,
-        comment: '최고의 영화',
-        createdAt: DateTime(2026, 10, 1),
-        updatedAt: DateTime(2026, 10, 1),
-      ),
-    ]);
-    await tester.pumpWidget(_appWith(const ProfileScreen(), memberService: service));
+  testWidgets('마이페이지에서 내가 등록한 평점으로 이동하면 하단 탭 없이 평점을 보여주고, 뒤로가면 돌아온다', (WidgetTester tester) async {
+    _usePhoneSize(tester, width: 400, height: 900);
+    AppRouter.router.go('/my');
+    await tester.pumpWidget(_fakeApp(
+      ratingApiService: FakeRatingApiService(ratings: [sampleRating()]),
+      tmdbMovieService: FakeTmdbMovieService(),
+    ));
     await tester.pumpAndSettle();
 
-    expect(find.text('내 평점 기록'), findsOneWidget);
-    expect(find.text('영화 #550'), findsOneWidget);
-    expect(find.text('최고의 영화'), findsOneWidget);
-    expect(find.text('2026.10.01'), findsOneWidget);
+    await tester.tap(find.text('내가 등록한 평점'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MyRatingsScreen), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+    expect(find.text('영화 550'), findsOneWidget);
+    expect(find.text('최고의 영화!'), findsOneWidget);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.text('내 프로필'), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
   });
 
-  testWidgets('서버가 이미 사용 중인 닉네임이라고 하면 오류 메시지가 표시된다', (WidgetTester tester) async {
-    final service = FakeMemberService(takenNicknames: {'무비러버'});
-    await tester.pumpWidget(_appWith(const SignUpScreen(), memberService: service));
-
-    await tester.enterText(find.widgetWithText(TextFormField, '닉네임을 입력해주세요'), '무비러버');
-    await tester.enterText(find.widgetWithText(TextFormField, '이메일 주소를 입력해주세요'), 'movielover@movielog.com');
-    await tester.enterText(find.widgetWithText(TextFormField, '비밀번호를 입력해주세요'), 'password1');
-    await tester.tap(find.byType(Checkbox));
-    await tester.pump();
-
-    await tester.tap(find.widgetWithText(ElevatedButton, '가입하기'));
+  testWidgets('평점 조회가 실패하면 Error 문구와 다시 시도 버튼을 보여준다', (WidgetTester tester) async {
+    AppRouter.router.go('/my/ratings');
+    await tester.pumpWidget(_fakeApp(
+      ratingApiService: FakeRatingApiService(failStatusCode: 404),
+    ));
     await tester.pumpAndSettle();
 
-    expect(find.text('이미 사용 중인 닉네임이에요.'), findsOneWidget);
+    expect(find.text('존재하지 않는 회원입니다.'), findsOneWidget);
+    expect(find.text('다시 시도'), findsOneWidget);
+  });
+
+  testWidgets('평점 응답을 기다리는 동안 Loading 인디케이터를 보여준다', (WidgetTester tester) async {
+    final service = FakeRatingApiService(ratings: [sampleRating(comment: null)])
+      ..gate = Completer<void>();
+    AppRouter.router.go('/my/ratings');
+    await tester.pumpWidget(_fakeApp(
+      ratingApiService: service,
+      tmdbMovieService: FakeTmdbMovieService(missingMovieIds: {550}),
+    ));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    service.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    // TMDB에서 못 찾은 영화는 placeholder로, 후기가 null이면 후기를 그리지 않습니다.
+    expect(find.text('영화 정보 없음'), findsOneWidget);
+    expect(find.text('movieId 550'), findsOneWidget);
+    expect(find.text('최고의 영화!'), findsNothing);
+    expect(find.text('일부 영화 정보를 가져오지 못해 제목·포스터를 대신 표시합니다.'), findsOneWidget);
+  });
+
+  testWidgets('평점이 없으면 Empty 안내를 보여준다', (WidgetTester tester) async {
+    AppRouter.router.go('/my/ratings');
+    await tester.pumpWidget(_fakeApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('아직 등록된 평점이 없어요.'), findsOneWidget);
+  });
+
+  testWidgets('서버가 중복이라고 하면 입력창이 에러 상태가 되고, 같은 값을 다시 입력하면 요청 없이 에러로 돌아온다', (WidgetTester tester) async {
+    final service = FakeMemberCheckService(takenNicknames: {'무비러버'});
+    await tester.pumpWidget(_appWith(const SignUpScreen(), memberCheckService: service));
+
+    await tester.enterText(_nicknameField, '무비러버');
+    await tester.pump();
+    await tester.tap(_nicknameCheckButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('이미 사용 중인 닉네임입니다.'), findsOneWidget);
+    ElevatedButton checkButton() => tester.widget<ElevatedButton>(_nicknameCheckButton);
+    expect(checkButton().onPressed, isNull);
+
+    await tester.enterText(_nicknameField, '무비러');
+    await tester.pump();
+    expect(find.text('이미 사용 중인 닉네임입니다.'), findsNothing);
+    expect(checkButton().onPressed, isNotNull);
+
+    await tester.enterText(_nicknameField, '무비러버');
+    await tester.pump();
+    expect(find.text('이미 사용 중인 닉네임입니다.'), findsOneWidget);
+    expect(checkButton().onPressed, isNull);
+    expect(service.nicknameRequests, ['무비러버']);
   });
 
   testWidgets('평점 화면은 선택 전에는 저장 버튼이 비활성화되어 있다', (WidgetTester tester) async {
