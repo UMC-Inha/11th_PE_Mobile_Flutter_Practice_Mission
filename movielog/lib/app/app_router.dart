@@ -12,6 +12,7 @@ import 'package:movielog/features/my_page/presentation/my_ratings_screen.dart';
 import 'package:movielog/features/shell/presentation/main_shell.dart';
 import 'package:movielog/features/sign_up/presentation/sign_up_screen.dart';
 import 'package:movielog/features/start/presentation/start_screen.dart';
+import 'package:movielog/view_models/learning_member_session.dart';
 import 'package:movielog/view_models/movie_detail_view_model.dart';
 import 'package:movielog/view_models/movie_home_view_model.dart';
 import 'package:movielog/view_models/movie_list_view_model.dart';
@@ -114,15 +115,24 @@ GoRouter createAppRouter({String initialLocation = AppRoutes.start}) {
                     path: 'ratings', // 최종 경로: /my/ratings
                     name: 'myRatings',
                     parentNavigatorKey: rootNavigatorKey,
-                    // 화면을 벗어나면 ViewModel도 dispose되어 늦게 온 응답이 버려진다.
-                    builder: (context, state) => ChangeNotifierProvider(
-                      create: (context) => MyRatingsViewModel(
-                        context.read<MovieLogApiService>(),
-                        context.read<TmdbMovieService>(),
-                        // 6주차는 학습용 ID 1이다.
-                      )..load(),
-                      child: const MyRatingsScreen(),
-                    ),
+                    builder: (context, state) {
+                      // 회원가입 결과로 보관한 학습용 memberId. 가입 전이면 조회하지 않는다.
+                      final memberId = context
+                          .read<LearningMemberSession>()
+                          .memberId;
+                      if (memberId == null) {
+                        return const _SignUpRequiredScreen();
+                      }
+                      // 화면을 벗어나면 ViewModel도 dispose되어 늦게 온 응답이 버려진다.
+                      return ChangeNotifierProvider(
+                        create: (context) => MyRatingsViewModel(
+                          context.read<MovieLogApiService>(),
+                          context.read<TmdbMovieService>(),
+                          memberId: memberId,
+                        )..load(),
+                        child: const MyRatingsScreen(),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -146,6 +156,9 @@ GoRouter createAppRouter({String initialLocation = AppRoutes.start}) {
           return ChangeNotifierProvider(
             create: (context) => MovieDetailViewModel(
               context.read<TmdbMovieService>(),
+              context.read<MovieLogApiService>(),
+              // 회원가입 결과의 memberId. 없으면 평점 등록 버튼이 비활성화된다.
+              memberId: context.read<LearningMemberSession>().memberId,
               movieId: movieId,
               // 목록에서 넘겨준 DTO가 같은 영화일 때만 쓴다.
               movie: extra is TmdbMovieDto && extra.id == movieId
@@ -162,6 +175,31 @@ GoRouter createAppRouter({String initialLocation = AppRoutes.start}) {
       body: Center(child: Text('${state.uri} 경로가 없습니다.')),
     ),
   );
+}
+
+/// 회원가입 전에 "내가 등록한 평점"을 열었을 때. 어느 회원의 평점인지 알 수 없다.
+class _SignUpRequiredScreen extends StatelessWidget {
+  const _SignUpRequiredScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(centerTitle: true, title: const Text('내가 등록한 평점')),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('학습용 회원가입이 필요합니다.'),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => context.go(AppRoutes.signUp),
+              child: const Text('회원가입 하러 가기'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// [28, 12] → `/movies?genres=28,12`, 비어 있으면 `/movies`

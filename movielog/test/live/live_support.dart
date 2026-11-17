@@ -6,7 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:movielog/data/models/common_response.dart';
+import 'package:movielog/data/models/create_member_request.dart';
 import 'package:movielog/data/models/movielog_dtos.dart';
+import 'package:movielog/data/models/sign_up_models.dart';
 import 'package:movielog/data/models/tmdb_genre_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_page.dart';
@@ -144,6 +147,32 @@ class CachingMovieLogApiService implements MovieLogApiService {
   @override
   Future<List<MemberRatingDto>> fetchMemberRatings(int memberId) =>
       _get('ratings:$memberId', () => _real.fetchMemberRatings(memberId));
+
+  // 쓰기는 녹화하지 않고 실제 Service로 그대로 보낸다. (이 인증 테스트는 조회만 쓴다.)
+  @override
+  Future<CommonResponse<SignUpResult>> signUp(CreateMemberRequest request) =>
+      _real.signUp(request);
+
+  @override
+  Future<void> createRating({
+    required int memberId,
+    required CreateRatingRequest request,
+  }) => _real.createRating(memberId: memberId, request: request);
+
+  @override
+  Future<void> updateRating({
+    required int memberId,
+    required int ratingId,
+    required UpdateRatingRequest request,
+  }) => _real.updateRating(
+    memberId: memberId,
+    ratingId: ratingId,
+    request: request,
+  );
+
+  @override
+  Future<void> deleteRating({required int memberId, required int ratingId}) =>
+      _real.deleteRating(memberId: memberId, ratingId: ratingId);
 }
 
 /// 실제 서버를 부르는 테스트는 MOVIELOG_LIVE=1 일 때만 돈다.

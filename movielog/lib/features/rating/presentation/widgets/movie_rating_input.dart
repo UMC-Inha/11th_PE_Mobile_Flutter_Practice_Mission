@@ -9,11 +9,15 @@ class MovieRatingInput extends StatelessWidget {
     required this.onChanged,
     this.itemSize = 40,
     this.allowHalfRating = true,
+    this.enabled = true,
   });
 
   final double rating;
   final ValueChanged<double> onChanged;
   final double itemSize;
+
+  /// false면 별을 눌러도 값이 바뀌지 않는다(저장 요청 중).
+  final bool enabled;
 
   /// 자체 백엔드 score는 1~5 정수(TINYINT)라 영화 평점 Dialog는 false로 쓴다.
   final bool allowHalfRating;
@@ -28,6 +32,7 @@ class MovieRatingInput extends StatelessWidget {
         initialRating: rating,
         minRating: allowHalfRating ? 0.5 : 1,
         allowHalfRating: allowHalfRating,
+        ignoreGestures: !enabled,
         itemCount: 5,
         itemSize: itemSize,
         glow: false,
