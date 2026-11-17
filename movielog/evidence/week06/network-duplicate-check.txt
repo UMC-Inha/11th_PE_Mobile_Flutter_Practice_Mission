@@ -1,0 +1,8 @@
+Chrome(Flutter Web, 390x844 에뮬레이션) → 실제 NestJS(localhost:3000) 네트워크 요청 기록
+시나리오: 케빈 입력 → 중복 확인(사용 가능) → 수현으로 고쳐 중복 확인(중복) → 수현이로 고침 → 수현으로 되돌림(Backspace)
+
+GET http://localhost:3000/members/nickname/%EC%BC%80%EB%B9%88  → 200 OK   (케빈, 중복 확인 버튼)
+GET http://localhost:3000/members/nickname/%EC%88%98%ED%98%84  → 200 OK   (수현, 중복 확인 버튼)
+
+수현이로 고칠 때, 그리고 수현으로 되돌릴 때는 요청이 나가지 않았다.
+(되돌린 직후 입력창은 곧바로 에러 상태 + 확인 버튼 비활성)
