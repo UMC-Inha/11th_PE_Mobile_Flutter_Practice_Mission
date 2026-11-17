@@ -141,9 +141,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
             DetailActionBar(
               isFavorite: _isFavorite,
               onFavoritePressed: () => _toggleFavorite(movie),
-              // 학습용 회원가입 전에는 평점을 남길 수 없습니다.
-              onRatePressed: viewModel.canRate ? _openRatingDialog : null,
-              notice: viewModel.canRate ? null : '학습용 회원가입을 완료하면 평점을 남길 수 있어요.',
+              onRatePressed: _openRatingDialog,
             ),
           ],
         ),

@@ -12,7 +12,7 @@ import 'package:movielog/data/services/sign_up_service.dart';
 Future<void> main(List<String> args) async {
   final dio = Dio(BaseOptions(baseUrl: 'https://workbook.devnoco.com'));
   final signUp = SignUpService(dio);
-  final ratingApi = RatingApiService(dio);
+  final ratingApi = RatingApiService(dio, dio);
 
   final nickname = args.isNotEmpty ? args[0] : '무비러버';
   final email = args.length > 1 ? args[1] : 'movielover@movielog.com';

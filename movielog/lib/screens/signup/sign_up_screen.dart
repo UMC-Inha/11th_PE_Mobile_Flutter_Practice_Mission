@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 
 import '../../data/models/create_member_request.dart';
 import '../../theme/app_colors.dart';
-import '../../view_models/learning_member_session.dart';
 import '../../view_models/sign_up_view_model.dart';
 import '../../widgets/common_app_bar.dart';
 import '../../widgets/movielog_button.dart';
@@ -145,8 +144,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final messenger = ScaffoldMessenger.of(context);
     final memberId = viewModel.createdMemberId;
     if (viewModel.submitStatus == SubmitStatus.success && memberId != null) {
-      // 가입 결과의 memberId를 학습용 세션에 보관해 이후 평점 요청에 사용합니다.
-      context.read<LearningMemberSession>().setMemberId(memberId);
       // 가입 완료 후에는 회원가입 화면으로 돌아올 수 없도록 go로 위치를 교체합니다.
       Router.neglect(context, () => context.go('/movies'));
       messenger.showSnackBar(

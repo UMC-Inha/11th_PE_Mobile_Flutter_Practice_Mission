@@ -4,14 +4,16 @@ import '../../../theme/app_colors.dart';
 import '../../../theme/app_text_styles.dart';
 
 class EditProfileButton extends StatelessWidget {
-  const EditProfileButton({super.key});
+  const EditProfileButton({super.key, required this.onPressed});
+
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 44,
       child: OutlinedButton(
-        onPressed: () {},
+        onPressed: onPressed,
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.violetDark,
           side: const BorderSide(color: AppColors.violetDark),
