@@ -43,7 +43,7 @@ class MovieCard extends StatelessWidget {
                     Positioned(
                       top: 8,
                       right: 8,
-                      child: _RatingBadge(rating: movie.averageRating),
+                      child: RatingBadge(rating: movie.averageRating),
                     ),
                   ],
                 ),
@@ -73,8 +73,9 @@ class MovieCard extends StatelessWidget {
   }
 }
 
-class _RatingBadge extends StatelessWidget {
-  const _RatingBadge({required this.rating});
+/// 포스터 오른쪽 위에 표시하는 별점 배지입니다.
+class RatingBadge extends StatelessWidget {
+  const RatingBadge({super.key, required this.rating});
 
   final double rating;
 

@@ -1,21 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../models/movie.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_text_styles.dart';
-import '../../../widgets/movie_card.dart';
 
-/// 섹션 제목과 가로 스크롤 영화 카드 목록입니다.
+/// 섹션 제목·전체보기 버튼과, 그 아래 가로 목록 영역입니다.
+/// 목록 영역([child])은 Loading·Error·Empty·Success 상태에 따라 바뀝니다.
 class MovieSection extends StatelessWidget {
   const MovieSection({
     super.key,
     required this.title,
-    required this.movies,
+    required this.child,
   });
 
   final String title;
-  final List<Movie> movies;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
@@ -49,18 +48,7 @@ class MovieSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          height: 270,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: movies.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              return MovieCard(movie: movies[index], width: 144);
-            },
-          ),
-        ),
+        SizedBox(height: 270, child: child),
       ],
     );
   }

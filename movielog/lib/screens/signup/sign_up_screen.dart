@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
+import '../../data/services/member_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common_app_bar.dart';
 import 'widgets/movie_log_text_form_field.dart';
@@ -33,7 +35,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _agreedToTerms = false;
   bool _obscurePassword = true;
 
+  /// 서버 중복 확인 요청을 기다리는 중이면 true입니다.
+  bool _isChecking = false;
+
+  /// 서버가 이미 사용 중이라고 알려준 값입니다. 입력을 바꾸면 지웁니다.
+  String? _takenNickname;
+  String? _takenEmail;
+
   bool get _canSubmit =>
+      !_isChecking &&
       _validateNickname(_nicknameController.text) == null &&
       _validateEmail(_emailController.text) == null &&
       _validatePassword(_passwordController.text) == null &&
@@ -58,6 +68,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
     if (nickname.length < 2) {
       return '닉네임은 두 글자 이상 입력해주세요.';
     }
+    if (nickname == _takenNickname) {
+      return '이미 사용 중인 닉네임이에요.';
+    }
     return null;
   }
 
@@ -70,6 +83,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
     if (!emailPattern.hasMatch(email)) {
       return '올바른 이메일 형식이 아니에요.';
+    }
+    if (email == _takenEmail) {
+      return '이미 가입된 이메일이에요.';
     }
     return null;
   }
@@ -95,12 +111,47 @@ class _SignUpScreenState extends State<SignUpScreen> {
         : const Icon(Icons.error_outline, color: AppColors.error);
   }
 
-  void _handleSubmit() {
+  Future<void> _handleSubmit() async {
+    if (_isChecking) return;
     final isValid = _formKey.currentState?.validate() ?? false;
     if (!isValid) {
       return;
     }
     FocusScope.of(context).unfocus();
+
+    final nickname = _nicknameController.text.trim();
+    final email = _emailController.text.trim();
+    final memberService = context.read<MemberService>();
+
+    setState(() => _isChecking = true);
+    try {
+      // 닉네임·이메일 중복 확인을 서버에 동시에 요청합니다.
+      final (nicknameOk, emailOk) = await (
+        memberService.isNicknameAvailable(nickname),
+        memberService.isEmailAvailable(email),
+      ).wait;
+      if (!mounted) return;
+
+      if (!nicknameOk || !emailOk) {
+        setState(() {
+          _takenNickname = nicknameOk ? null : nickname;
+          _takenEmail = emailOk ? null : email;
+        });
+        _formKey.currentState?.validate();
+        return;
+      }
+    } catch (error) {
+      debugPrint('중복 확인 실패: $error');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('서버에 연결하지 못했어요. 잠시 후 다시 시도해주세요.')),
+      );
+      return;
+    } finally {
+      if (mounted) setState(() => _isChecking = false);
+    }
+
+    if (!mounted) return;
     // 가입 완료 후에는 회원가입 화면으로 돌아올 수 없도록 go로 홈 위치로 교체합니다.
     Router.neglect(context, () => context.go('/home'));
   }

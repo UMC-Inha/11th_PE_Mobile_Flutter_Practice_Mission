@@ -162,6 +162,3 @@ List<Movie> moviesByGenre(String genre) {
   return movies.where((movie) => movie.genre == genre).toList();
 }
 
-/// 평점이 높은 순서로 정렬한 인기 영화 목록입니다.
-List<Movie> get popularMovies =>
-    [...movies]..sort((a, b) => b.averageRating.compareTo(a.averageRating));
