@@ -6,7 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:movielog/data/models/common_response.dart';
+import 'package:movielog/data/models/create_member_request.dart';
 import 'package:movielog/data/models/movielog_dtos.dart';
+import 'package:movielog/data/models/sign_up_models.dart';
 import 'package:movielog/data/models/tmdb_genre_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_page.dart';
@@ -144,6 +147,12 @@ class CachingMovieLogApiService implements MovieLogApiService {
   @override
   Future<List<MemberRatingDto>> fetchMemberRatings(int memberId) =>
       _get('ratings:$memberId', () => _real.fetchMemberRatings(memberId));
+
+  // 쓰기(회원가입)는 녹화하지 않고 실제 Service로 그대로 보낸다. 평점 등록·수정·삭제와
+  // 로그인·내 정보는 8주차부터 토큰이 필요한 별도 Service(RatingApiService 등)가 맡는다.
+  @override
+  Future<CommonResponse<SignUpResult>> signUp(CreateMemberRequest request) =>
+      _real.signUp(request);
 }
 
 /// 실제 서버를 부르는 테스트는 MOVIELOG_LIVE=1 일 때만 돈다.

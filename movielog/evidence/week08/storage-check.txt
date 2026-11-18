@@ -1,0 +1,46 @@
+# 8주차 FE — 브라우저(Flutter Web, Chrome)에 실제로 무엇이 저장됐는지
+
+실행 환경: Flutter Web(debug) · Chrome · http://localhost:5173. 아래는 같은 탭에서 개발자도구 콘솔처럼 JS로 storage를 열어 본 결과다.
+**값은 출력하지 않았다.** 키 이름 · 길이 · "eyJ(JWT 머리말)가 평문으로 들어 있는지" · "@가 있는지(이메일)" · "테스트 비밀번호 접두사가 있는지"만 확인했다.
+
+!! 이 기록은 **웹**의 결과다. 이 맥에는 Xcode · Android SDK가 없어 iOS Keychain · Android Keystore에서는 실행하지 못했다.
+   웹의 flutter_secure_storage는 Keychain/Keystore가 아니라 WebCrypto(AES)로 값을 암호화해 localStorage에 둔다.
+
+## 1. 로그인한 상태 (계정 A 로그인 직후, 마이페이지)
+
+| 저장소 | 키 | 길이 | JWT 평문(eyJ) | 이메일(@) | 테스트 비밀번호 접두사 |
+| --- | --- | ---: | --- | --- | --- |
+| localStorage | FlutterSecureStorage.movielog.access_token | 285 | 없음 | 없음 | 없음 |
+| localStorage | FlutterSecureStorage | 44 | 없음 | 없음 | 없음 |
+| sessionStorage | dartAppInstanceId (Flutter 엔진이 만드는 값) · routeTrace (하네스 기록용) | - | 없음 | - | 없음 |
+| cookie | (비어 있음) | 0 | - | - | - |
+| IndexedDB | indexedDB.databases() = [] | - | - | - | - |
+| CacheStorage | caches.keys() = [] | - | - | - | - |
+
+- 토큰은 **평문 JWT가 아니라** 암호화된 값으로 저장됐다(eyJ가 없다). 비밀번호는 어디에도 저장되지 않았다.
+- `FlutterSecureStorage`(44자)는 정규식 `^[A-Za-z0-9+/]{43}=$`에 맞는다. 32바이트를 base64로 쓴 길이·모양이다. **암호화 키로 보이지만 디코딩해서 확인하지는 않았다(추정).**
+  같은 출처의 localStorage에 암호문과 키로 보이는 값이 함께 있으므로, 이 출처에서 스크립트가 돌 수 있다면(예: XSS) 복호화될 수 있다. 그래서 웹의 보안 수준을 모바일 Keychain/Keystore와 같다고 말하지 않는다.
+
+## 2. 로그아웃 뒤 (마이페이지 로그아웃 버튼)
+
+- `FlutterSecureStorage.movielog.access_token` 키가 **사라졌다**. 남은 키는 `FlutterSecureStorage`(44자) 하나뿐이다.
+- 로그인 화면에 만료 Snackbar는 뜨지 않았다(직접 로그아웃은 만료가 아니다).
+
+## 3. 서버가 꺼진 상태로 새로고침했을 때
+
+- 시작 화면에 "로그인 상태를 확인하지 못했어요. 다시 시도해 주세요." + [다시 시도]가 보였고, `access_token` 키는 **그대로 남아 있었다**(길이 285). 네트워크 실패를 로그아웃으로 처리하지 않는다.
+
+## 4. 서버 JWT 키를 바꿔 저장된 토큰이 무효가 된 뒤 새로고침했을 때
+
+- GET /members/me → 401 `AUTH401_3`(유효하지 않은 토큰) → `access_token` 키 삭제 → 로그인 화면에 "로그인이 만료됐어요. 다시 로그인해 주세요." Snackbar 1회.
+
+## 5. "이메일 저장" 체크박스 (shared_preferences)
+
+| 상태 | localStorage 키 |
+| --- | --- |
+| 체크하고 로그인 → 로그아웃 | `saved_login_email`(길이 23, 값은 이메일 모양 1개 = 로그인에 쓴 이메일) + `FlutterSecureStorage` |
+| 로그인 화면 | 이메일 칸에 그 이메일이 채워지고, 비밀번호 칸은 비어 있고, 체크박스는 체크된 상태 |
+| 체크 해제하고 로그인 → 로그아웃 | `saved_login_email` 키가 **사라짐**. 로그인 화면은 이메일·비밀번호 모두 비어 있음 |
+
+- 이 키에는 이메일 하나만 있었고, 비밀번호·토큰은 저장되지 않았다(위 1번 표에서 로그인한 상태에서도 `saved_login_email` 이외의 일반 key-value 저장소 키에 비밀번호·JWT가 없었다).
+- 이메일은 평문으로 저장된다(민감하지만 비밀번호나 토큰만큼은 아니라고 보는 설계. 워크북 Challenge가 이메일만 저장하라고 했다).

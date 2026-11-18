@@ -18,7 +18,6 @@ import 'package:movielog/features/movies/presentation/widgets/movie_grid.dart';
 import 'package:movielog/features/movies/presentation/widgets/retry_dialog.dart';
 import 'package:movielog/view_models/movie_home_view_model.dart';
 import 'package:movielog/view_models/movie_list_view_model.dart';
-import 'package:movielog/view_models/my_ratings_view_model.dart';
 import 'package:movielog/widgets/tmdb_poster_image.dart';
 
 import '../support.dart';
@@ -101,7 +100,7 @@ void main() {
         multi30 = list.movies;
 
         progress('1-5 자체 백엔드');
-        await MyRatingsViewModel(api, tmdb).load();
+        await api.fetchMemberRatings(1); // 공개 조회(유저별 평점)는 토큰이 필요 없다
         await api.checkNickname('수현');
         await api.checkNickname('케빈');
         await api.checkEmail('kevin@umc.com');

@@ -1,0 +1,29 @@
+flutter test (offline, no network) — 2026-11-18 12:16
+Flutter 3.47.5 • channel stable • https://github.com/flutter/flutter.git Framework • revision 6a19cca564 (9 weeks ago) • 2026-09-17 14:13:22 -0400 
+파일별로 따로 실행한 합계: 통과 374, 건너뜀 3
+건너뜀은 실서버·실제 TMDB가 필요한 test/live 테스트다(MOVIELOG_LIVE=1 일 때만 실행).
+
+  test/auth_flow_test.dart: 24
+  test/auth_interceptor_test.dart: 19
+  test/auth_models_test.dart: 14
+  test/auth_redirect_test.dart: 48
+  test/auth_view_model_test.dart: 33
+  test/edit_profile_view_model_test.dart: 14
+  test/live/fixture_evidence_test.dart: 건너뜀 1
+  test/live/live_evidence_test.dart: 건너뜀 1
+  test/live/tmdb_failure_log_test.dart: 건너뜀 1
+  test/movielog_button_test.dart: 10
+  test/my_page_and_profile_test.dart: 18
+  test/my_ratings_edit_screen_test.dart: 20
+  test/my_ratings_screen_test.dart: 9
+  test/rating_dialog_test.dart: 12
+  test/rating_write_view_model_test.dart: 43
+  test/sign_up_duplicate_check_test.dart: 8
+  test/sign_up_submit_test.dart: 17
+  test/sign_up_view_model_test.dart: 18
+  test/tmdb_data_test.dart: 14
+  test/view_model_test.dart: 17
+  test/widget_test.dart: 15
+  test/write_api_test.dart: 21
+
+전체를 한 번에 실행: +374 ~3: All tests passed!

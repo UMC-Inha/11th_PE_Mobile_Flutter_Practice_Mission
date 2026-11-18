@@ -10,12 +10,13 @@ import 'package:movielog/core/network/tmdb_logging_interceptor.dart';
 /// [accessToken]은 테스트나 401 재현(잘못된 Token)용으로만 바꿔 넣는다.
 Dio createTmdbClient({
   String? accessToken,
+  String? baseUrl,
   bool enableLogging = kDebugMode,
   void Function(String)? log,
 }) {
   final dio = Dio(
     BaseOptions(
-      baseUrl: 'https://api.themoviedb.org/3',
+      baseUrl: baseUrl ?? TmdbConfig.baseUrl,
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 10),
       headers: {

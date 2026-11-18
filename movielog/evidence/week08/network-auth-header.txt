@@ -1,0 +1,158 @@
+# 8주차 FE 실서버 Network 기록 — Authorization 헤더 "있었는지"만 기록 (값은 어디에도 남기지 않음)
+
+측정 방법(하네스): Flutter Web(5173) → 기록용 프록시(3100) → NestJS 8주차 서버(3101), 그리고 TMDB 자리에 대역 서버(3200).
+프록시와 대역 서버가 요청마다 method · path · status · Authorization 의 "종류"만 적었다. 종류의 뜻:
+  none       = Authorization 헤더 없음
+  jwt-like   = "Bearer eyJ…" 로 시작(MovieLog JWT처럼 생긴 값). 값 자체는 기록하지 않았다
+  tmdb-dummy = 이 실험용으로 .env에 넣은 가짜 TMDB 토큰과 같은 값(TMDB 전용 Client가 붙이는 것. MovieLog JWT 아님)
+주의: ① 브라우저가 보내는 CORS 사전 요청(OPTIONS)에는 규칙상 Authorization이 없어서 아래 표에서는 빼고 따로 개수만 적었다.
+      ② 포스터 이미지(image.tmdb.org)는 브라우저가 직접 받는 요청이라 이 프록시를 거치지 않는다. 앱 코드에서 이미지는 Image.network로 받고 Dio(=AuthInterceptor)를 거치지 않는다.
+      ③ 계정 B 생성·B의 로그인·B의 평점 등록은 서버(3101)에 curl로 직접 보냈다. 앱의 요청이 아니라 아래 기록에 없다.
+      ④ GET /members/email/{email} 4건 중 3건은 하네스 점검용 curl(ready@test.dev, x@y.zz)이고, 앱(회원가입 화면)이 보낸 이메일 중복 확인은 1건이다.
+
+전체 기록: 요청 114건(사전 요청 OPTIONS 44건 포함), 표시 대상 70건
+
+## 1. 경로별 요약 (OPTIONS 제외)
+
+대상      | Method | 경로                         | Authorization 종류별 요청 수
+----------|--------|------------------------------|------------------------------
+movielog  | POST   | /auth/login                  | none: 14
+movielog  | POST   | /members                     | none: 1
+movielog  | GET    | /members/email/{email}       | none: 4
+movielog  | GET    | /members/me                  | jwt-like: 16
+movielog  | PATCH  | /members/me                  | jwt-like: 4
+movielog  | GET    | /members/nickname/{nickname} | none: 1
+movielog  | POST   | /ratings                     | jwt-like: 7
+movielog  | DELETE | /ratings/{id}                | jwt-like: 2
+movielog  | PATCH  | /ratings/{id}                | jwt-like: 2
+tmdb      | GET    | /discover/movie              | tmdb-dummy: 1
+tmdb      | GET    | /genre/movie/list            | tmdb-dummy: 2
+tmdb      | GET    | /movie/155                   | tmdb-dummy: 1
+tmdb      | GET    | /movie/238                   | tmdb-dummy: 1
+tmdb      | GET    | /movie/550                   | tmdb-dummy: 2
+tmdb      | GET    | /movie/popular               | tmdb-dummy: 12
+
+CORS 사전 요청(OPTIONS, Authorization 없음이 정상): /auth/login ×12, /members ×1, /members/me ×20, /ratings ×7, /ratings/{id} ×4
+
+## 2. 확인한 규칙
+
+- TMDB(대역) 요청 중 "TMDB 토큰이 아닌 값"이 실린 것: 0건
+- 보호 경로가 아닌 MovieLog 경로(/auth/login · /members · 중복 확인)에 JWT가 실린 것: 0건
+- 보호 경로(GET·PATCH /members/me, /ratings…)인데 JWT 없이 나간 요청: 0건
+- 로그인(POST /auth/login), 회원가입(POST /members), 이메일·닉네임 중복 확인(GET)은 모두 none
+- 평점 등록·수정 요청 body의 key: POST /ratings = movieId, score (comment는 비어 있으면 생략) / PATCH /ratings/{id} = score, comment / PATCH /members/me = nickname. memberId는 어디에도 없다
+
+## 3. 시간 순서 기록 (OPTIONS 제외, 시나리오 표시는 하네스가 끼운 구분선)
+
+시각(UTC) | 대상     | Method | 경로                         | status [code]                        | Authorization | 메모
+-----------|----------|--------|------------------------------|--------------------------------------|---------------|------
+02:45:19 | movielog | GET    | /members/email/{email}       | 200                                  | none          | 
+02:45:19 | tmdb     | GET    | /genre/movie/list            | 200                                  | tmdb-dummy    | 
+02:48:44 | movielog | GET    | /members/email/{email}       | 200                                  | none          | 
+## S0-accountB-created-direct-to-BE-not-via-proxy
+02:49:22 | movielog | GET    | /members/nickname/{nickname} | 200                                  | none          | 
+02:49:22 | movielog | GET    | /members/email/{email}       | 200                                  | none          | 
+02:49:29 | movielog | POST   | /members                     | 201                                  | none          | 
+## S9-signup-done-account-A-created-via-app
+02:49:40 | movielog | POST   | /auth/login                  | 401                                  | none          | 
+## S2a-login-wrong-password-AUTH401_1
+## S2b-login-network-failure-injected-drop
+02:49:49 | movielog | POST   | /auth/login                  | DROPPED(harness: 연결을 끊음)             | none          | 하네스가 주입한 실패
+02:49:49 | movielog | POST   | /auth/login                  | 401                                  | none          | 
+## S2b2-login-network-failure-drop-x3-(browser-retries-a-dropped-reused-connection-once)
+02:50:04 | movielog | POST   | /auth/login                  | DROPPED(harness: 연결을 끊음)             | none          | 하네스가 주입한 실패
+02:50:04 | movielog | POST   | /auth/login                  | DROPPED(harness: 연결을 끊음)             | none          | 하네스가 주입한 실패
+## S3-login-success-account-A
+02:50:29 | movielog | POST   | /auth/login                  | 200                                  | none          | 
+02:50:30 | tmdb     | GET    | /movie/popular               | 200                                  | tmdb-dummy    | 
+02:50:30 | movielog | GET    | /members/me                  | 200                                  | jwt-like      | 
+## S3-done-mypage-shown
+## S4-reload-restore-session-GET-me-delayed-6s-to-see-splash
+02:51:11 | movielog | GET    | /members/me                  | 304                                  | jwt-like      | 
+## S5a-retryRequired-after-receive-timeout(5s)-click-retry-next
+02:51:26 | movielog | GET    | /members/me                  | 200                                  | jwt-like      | 
+02:51:26 | tmdb     | GET    | /movie/popular               | 200                                  | tmdb-dummy    | 
+## S7a-rating-create-movie550-score4
+02:52:14 | movielog | POST   | /ratings                     | 201                                  | jwt-like      | 
+02:53:04 | tmdb     | GET    | /movie/550                   | 200                                  | tmdb-dummy    | 
+## S7b-rating-edit
+02:53:21 | movielog | PATCH  | /ratings/{id}                | 200                                  | jwt-like      | body keys=score,comment
+## S7c-rating-delete
+02:53:41 | movielog | DELETE | /ratings/{id}                | 200                                  | jwt-like      | 
+## S7d-account-B-rating-created-directly-on-BE(ratingId-2?)
+## S7e-rating-create-again-movie550-score3-(new-ratingId)
+02:54:34 | movielog | POST   | /ratings                     | 201                                  | jwt-like      | body keys=movieId,score
+## S7f-rating-same-movie-again-expect-409-RATING409_1
+02:55:01 | movielog | POST   | /ratings                     | 409                                  | jwt-like      | body keys=movieId,score
+## S7g-HARNESS-rewrite-PATCH-ratings-3-to-ratings-2(account-B-rating)-expect-403-RATING403_1-no-logout
+02:55:30 | tmdb     | GET    | /movie/550                   | 200                                  | tmdb-dummy    | 
+02:55:43 | movielog | PATCH  | /ratings/{id}                | 403                                  | jwt-like      | body keys=score,comment; ratingId 3 → 2 (harness)
+## S8a-profile-save-same-nickname-expect-no-request
+## S8b-profile-duplicate-nickname-expect-409-MEMBER409_1
+02:56:41 | movielog | PATCH  | /members/me                  | 409                                  | jwt-like      | body keys=nickname
+## S8c-profile-1char-nickname-validation-expect-no-request
+## S13c-profile-back-with-unsaved-changes-confirm-dialog
+## S8d-profile-save-network-failure-injected(drop-x3)-expect-snackbar-no-logout
+02:57:35 | movielog | PATCH  | /members/me                  | DROPPED(harness: 연결을 끊음)             | jwt-like      | 하네스가 주입한 실패
+02:57:35 | movielog | PATCH  | /members/me                  | DROPPED(harness: 연결을 끊음)             | jwt-like      | 하네스가 주입한 실패
+## S8e-profile-valid-save-expect-200-screen-closes-no-extra-GET-me
+02:57:53 | movielog | PATCH  | /members/me                  | 200                                  | jwt-like      | body keys=nickname
+## S12a-logout-from-mypage
+## S12b-login-as-account-B-same-tab-(no-remember-email)
+## S13a-login-B-then-GET-me-delayed-4.5s-observe-My-page-loading-spinner
+02:58:37 | movielog | POST   | /auth/login                  | 200                                  | none          | 
+02:58:37 | tmdb     | GET    | /movie/popular               | 200                                  | tmdb-dummy    | 
+02:58:42 | movielog | GET    | /members/me                  | 200                                  | jwt-like      | 
+## S12c-logout-B-then-login-A-with-remember-email-checked
+## S13b-login-A-remember-email-checked-GET-me-503-once-expect-My-page-error-retry
+02:59:31 | movielog | POST   | /auth/login                  | 200                                  | none          | 
+02:59:31 | tmdb     | GET    | /movie/popular               | 200                                  | tmdb-dummy    | 
+02:59:31 | movielog | GET    | /members/me                  | 503(harness 주입)                      | jwt-like      | 하네스가 주입한 실패
+02:59:46 | movielog | GET    | /members/me                  | 200                                  | jwt-like      | 
+## S11b-untick-remember-login-A-logout-expect-empty-login-form
+03:00:13 | movielog | POST   | /auth/login                  | 200                                  | none          | 
+03:00:14 | tmdb     | GET    | /movie/popular               | 200                                  | tmdb-dummy    | 
+03:00:14 | movielog | GET    | /members/me                  | 304                                  | jwt-like      | 
+## PHASE-B-start-BE-restart-new-secret-exp3600-for-B1
+03:00:57 | movielog | GET    | /members/email/{email}       | 200                                  | none          | 
+03:01:06 | movielog | POST   | /auth/login                  | 200                                  | none          | 
+03:01:06 | tmdb     | GET    | /movie/popular               | 200                                  | tmdb-dummy    | 
+03:01:06 | movielog | GET    | /members/me                  | 304                                  | jwt-like      | 
+## S5b-BE-KILLED-then-reload-expect-retryRequired-token-kept
+03:01:19 | movielog | OPTIONS| /members/me                  | UPSTREAM_DOWN(서버가 꺼져 있음)             | none          | 서버가 꺼져 있어 CORS 사전 요청이 실패 → 본 요청은 나가지도 못함
+## S5c-BE-restarted-SAME-secret-click-retry-expect-home
+03:01:42 | movielog | GET    | /members/me                  | 304                                  | jwt-like      | 
+03:01:43 | tmdb     | GET    | /movie/popular               | 200                                  | tmdb-dummy    | 
+## S6a-BE-restarted-NEW-secret-(stored-token-now-invalid-signature)-reload-expect-login-with-expiry-snackbar-once
+03:02:02 | movielog | GET    | /members/me                  | 401                                  | jwt-like      | 
+03:02:23 | movielog | POST   | /auth/login                  | 200                                  | none          | 
+03:02:23 | tmdb     | GET    | /movie/popular               | 200                                  | tmdb-dummy    | 
+03:02:23 | movielog | GET    | /members/me                  | 304                                  | jwt-like      | 
+## S4b-reload-signed-in-with-uiTrace-hook(valid-token)
+03:02:44 | movielog | GET    | /members/me                  | 304                                  | jwt-like      | 
+03:02:52 | tmdb     | GET    | /movie/popular               | 200                                  | tmdb-dummy    | 
+## S6a2-BE-restart-NEW-secret-second-try-rapid-screenshots-for-expiry-snackbar
+03:03:19 | movielog | GET    | /members/me                  | 401                                  | jwt-like      | 
+## S6a3-after-expiry-snackbar-go-to-signup-and-back-expect-no-second-snackbar
+## S6b-BE-restart-NEW-secret-JWT_ACCESS_EXPIRATION=20s-login-then-wait-then-rate
+03:04:03 | movielog | POST   | /auth/login                  | 200                                  | none          | 
+03:04:03 | tmdb     | GET    | /movie/popular               | 200                                  | tmdb-dummy    | 
+03:04:03 | movielog | GET    | /members/me                  | 304                                  | jwt-like      | 
+## S6b2-token-expired(>20s)-save-rating-expect-401-AUTH401_4-session-cleared-login-snackbar-once
+03:04:32 | movielog | POST   | /ratings                     | 401                                  | jwt-like      | body keys=movieId,score
+## S6c-BE-restart-NEW-secret-exp3600-setup-two-session-ratings-for-concurrent-401-test
+03:05:13 | movielog | POST   | /auth/login                  | 200                                  | none          | 
+03:05:14 | tmdb     | GET    | /movie/popular               | 200                                  | tmdb-dummy    | 
+03:05:14 | movielog | GET    | /members/me                  | 304                                  | jwt-like      | 
+03:05:35 | movielog | POST   | /ratings                     | 409 RATING409_1                      | jwt-like      | body keys=movieId,score
+03:05:54 | tmdb     | GET    | /genre/movie/list            | 200                                  | tmdb-dummy    | 
+03:05:54 | tmdb     | GET    | /discover/movie              | 200                                  | tmdb-dummy    | 
+03:06:15 | movielog | POST   | /ratings                     | 201                                  | jwt-like      | body keys=movieId,score
+03:06:41 | movielog | POST   | /ratings                     | 201                                  | jwt-like      | body keys=movieId,score
+## S6c2-BE-restart-DIFFERENT-secret-then-multi-delete-2-ratings-concurrent-401
+03:07:12 | tmdb     | GET    | /movie/238                   | 200                                  | tmdb-dummy    | 
+03:07:12 | tmdb     | GET    | /movie/155                   | 200                                  | tmdb-dummy    | 
+03:07:37 | movielog | DELETE | /ratings/{id}                | 401 AUTH401_3                        | jwt-like      | 
+03:09:21 | movielog | POST   | /auth/login                  | 200                                  | none          | 
+03:09:21 | tmdb     | GET    | /movie/popular               | 200                                  | tmdb-dummy    | 
+03:09:21 | movielog | GET    | /members/me                  | 304                                  | jwt-like      | 

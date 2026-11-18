@@ -2,26 +2,36 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movielog/core/storage/genre_preference.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
+import 'package:movielog/data/services/member_api_service.dart';
 import 'package:movielog/data/services/movielog_api_service.dart';
+import 'package:movielog/data/services/rating_api_service.dart';
 import 'package:movielog/data/services/tmdb_movie_service.dart';
+import 'package:movielog/features/auth/presentation/login_screen.dart';
 import 'package:movielog/features/home/presentation/home_screen.dart';
 import 'package:movielog/features/movies/presentation/movie_detail_screen.dart';
 import 'package:movielog/features/movies/presentation/movie_list_screen.dart';
+import 'package:movielog/features/my_page/presentation/edit_profile_screen.dart';
 import 'package:movielog/features/my_page/presentation/my_page_screen.dart';
 import 'package:movielog/features/my_page/presentation/my_ratings_screen.dart';
 import 'package:movielog/features/shell/presentation/main_shell.dart';
 import 'package:movielog/features/sign_up/presentation/sign_up_screen.dart';
-import 'package:movielog/features/start/presentation/start_screen.dart';
+import 'package:movielog/features/start/presentation/splash_screen.dart';
+import 'package:movielog/widgets/movielog_button.dart';
+import 'package:movielog/view_models/auth_view_model.dart';
+import 'package:movielog/view_models/edit_profile_view_model.dart';
 import 'package:movielog/view_models/movie_detail_view_model.dart';
 import 'package:movielog/view_models/movie_home_view_model.dart';
 import 'package:movielog/view_models/movie_list_view_model.dart';
 import 'package:movielog/view_models/my_ratings_view_model.dart';
+import 'package:movielog/view_models/session_ratings.dart';
 import 'package:movielog/view_models/sign_up_view_model.dart';
 import 'package:provider/provider.dart';
 
 /// Route 경로를 한곳에 모아 오타로 인한 이동 실패를 막는다.
 abstract final class AppRoutes {
+  /// 앱을 켠 직후의 시작(스플래시) 화면. 토큰을 확인하는 동안 머문다.
   static const start = '/';
+  static const login = '/login';
   static const signUp = '/sign-up';
   static const home = '/home';
   static const movies = '/movies';
@@ -30,8 +40,32 @@ abstract final class AppRoutes {
   /// 마이페이지의 자식 화면. 하단 NavigationBar를 가리도록 root Navigator 위에 열린다.
   static const myRatings = '/my/ratings';
 
+  /// 프로필(닉네임) 수정. 마이페이지의 자식 화면이라 하단 NavigationBar를 가린다.
+  static const editProfile = '/my/profile/edit';
+
   /// TMDB 영화 id → `/movies/550`
   static String movieDetail(int movieId) => '$movies/$movieId';
+}
+
+/// 인증 상태와 현재 위치로 어디로 보낼지 정한다. 이동하지 않아도 되면 null.
+///
+/// 상태만 읽고 판단한다(비동기 작업·API 호출은 하지 않는다). 로그인·로그아웃·만료가 모두
+/// 상태를 바꾸기만 하면 이 규칙 한곳에서 이동이 정해진다.
+String? authRedirect(AuthStatus status, String location) {
+  const publicPaths = {AppRoutes.login, AppRoutes.signUp};
+  final atStart = location == AppRoutes.start;
+  final atPublic = publicPaths.contains(location);
+
+  return switch (status) {
+    // 토큰 확인 중 또는 확인 실패(재시도 버튼): 시작 화면을 유지한다.
+    AuthStatus.initializing ||
+    AuthStatus.retryRequired => atStart ? null : AppRoutes.start,
+    // 로그아웃 또는 로그인 요청 중: 공개 화면(로그인·회원가입)만 허용한다.
+    AuthStatus.signedOut ||
+    AuthStatus.authenticating => atPublic ? null : AppRoutes.login,
+    // 로그인됨: 시작·로그인·회원가입 화면은 홈으로 보낸다.
+    AuthStatus.signedIn => (atStart || atPublic) ? AppRoutes.home : null,
+  };
 }
 
 /// 앱 전체 Router.
@@ -39,20 +73,63 @@ abstract final class AppRoutes {
 /// 공용 Service(TMDB·자체 API)는 MovieLogApp의 MultiProvider가 최상단에서 제공하고,
 /// 화면마다 하나씩인 ViewModel은 각 Route 안에서 ChangeNotifierProvider로 만든다.
 /// 그래서 화면을 벗어나면 ViewModel도 함께 dispose된다.
-GoRouter createAppRouter({String initialLocation = AppRoutes.start}) {
+///
+/// 인증 상태가 바뀌면 `refreshListenable`(상태 전용)로 redirect를 다시 실행한다. GoRouter는 앱이 살아 있는
+/// 동안 한 번만 만들어야 하므로 [MovieLogApp]의 State가 initState에서 한 번 호출한다.
+GoRouter createAppRouter(
+  AuthViewModel authViewModel, {
+  String initialLocation = AppRoutes.start,
+}) {
   // 앱 전체를 감싸는 root Navigator의 키. GoRoute는 parentNavigatorKey를 주지 않으면
   // 가장 가까운 ShellRoute의 Navigator를 쓰므로, 하단 NavigationBar를 가려야 하는
   // 자식 화면(/my/ratings)에는 이 키를 지정한다.
   final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
+  // 로그인 전에 요청한 위치(개발용 INITIAL_LOCATION, 테스트의 시작 위치)를 한 번만 기억했다가
+  // 로그인에 성공하면 홈 대신 그곳으로 보낸다. 시작·공개 화면을 요청했다면 기억할 것이 없다.
+  String? pendingLocation =
+      initialLocation == AppRoutes.start ||
+          initialLocation == AppRoutes.login ||
+          initialLocation == AppRoutes.signUp
+      ? null
+      : initialLocation;
+
   return GoRouter(
     initialLocation: initialLocation,
     navigatorKey: rootNavigatorKey,
+    // 상태가 바뀔 때만 redirect를 다시 실행한다(내 정보·문구 변경에는 반응하지 않는다).
+    refreshListenable: authViewModel.statusListenable,
+    redirect: (context, state) {
+      final target = authRedirect(authViewModel.status, state.uri.path);
+      if (target == AppRoutes.home && pendingLocation != null) {
+        final pending = pendingLocation;
+        pendingLocation = null;
+        return pending;
+      }
+      return target;
+    },
     routes: [
       GoRoute(
         path: AppRoutes.start,
         name: 'start',
-        builder: (context, state) => const StartScreen(),
+        // 토큰 확인 중에는 인디케이터, 확인 실패(retryRequired)에는 다시 시도 버튼.
+        builder: (context, state) {
+          final auth = context.watch<AuthViewModel>();
+          return SplashScreen(
+            message: auth.message,
+            onRetry: auth.status == AuthStatus.retryRequired
+                ? auth.restoreSession
+                : null,
+          );
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.login,
+        name: 'login',
+        builder: (context, state) {
+          final extra = state.extra;
+          return LoginScreen(initialEmail: extra is String ? extra : null);
+        },
       ),
       GoRoute(
         path: AppRoutes.signUp,
@@ -117,12 +194,48 @@ GoRouter createAppRouter({String initialLocation = AppRoutes.start}) {
                     // 화면을 벗어나면 ViewModel도 dispose되어 늦게 온 응답이 버려진다.
                     builder: (context, state) => ChangeNotifierProvider(
                       create: (context) => MyRatingsViewModel(
-                        context.read<MovieLogApiService>(),
+                        context.read<RatingApiService>(),
                         context.read<TmdbMovieService>(),
-                        // 6주차는 학습용 ID 1이다.
-                      )..load(),
+                        context.read<AuthViewModel>(),
+                        context.read<SessionRatings>(),
+                      )..loadMovies(),
                       child: const MyRatingsScreen(),
                     ),
+                  ),
+                  GoRoute(
+                    path: 'profile/edit', // 최종 경로: /my/profile/edit
+                    name: 'editProfile',
+                    // 하단 NavigationBar를 가리도록 root Navigator 위에 연다.
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) {
+                      final auth = context.watch<AuthViewModel>();
+                      // 내 정보를 아직 못 받았으면 수정할 값이 없다. 마이페이지의 수정 버튼은
+                      // member가 있을 때만 켜지지만, 직접 주소로 들어오는 경우를 대비한다.
+                      if (auth.member == null) {
+                        return Scaffold(
+                          appBar: AppBar(
+                            centerTitle: true,
+                            title: const Text('프로필 수정'),
+                          ),
+                          body: Center(
+                            child: auth.memberStatus == MemberLoadStatus.error
+                                ? MovieLogButton(
+                                    label: '다시 시도',
+                                    onPressed: () =>
+                                        auth.loadMember(force: true),
+                                  )
+                                : const CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+                      return ChangeNotifierProvider(
+                        create: (context) => EditProfileViewModel(
+                          context.read<MemberApiService>(),
+                          auth,
+                        ),
+                        child: const EditProfileScreen(),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -146,6 +259,9 @@ GoRouter createAppRouter({String initialLocation = AppRoutes.start}) {
           return ChangeNotifierProvider(
             create: (context) => MovieDetailViewModel(
               context.read<TmdbMovieService>(),
+              context.read<RatingApiService>(),
+              context.read<AuthViewModel>(),
+              context.read<SessionRatings>(),
               movieId: movieId,
               // 목록에서 넘겨준 DTO가 같은 영화일 때만 쓴다.
               movie: extra is TmdbMovieDto && extra.id == movieId

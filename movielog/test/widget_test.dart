@@ -1,7 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/app/app_router.dart';
-import 'package:movielog/app/movie_log_app.dart';
 import 'package:movielog/features/movies/presentation/movie_detail_screen.dart';
 import 'package:movielog/features/movies/presentation/movie_list_screen.dart';
 import 'package:movielog/features/movies/presentation/widgets/genre_filter_sheet.dart';
@@ -10,7 +11,9 @@ import 'package:movielog/features/movies/presentation/widgets/movie_list_states.
 import 'package:movielog/features/movies/presentation/widgets/retry_dialog.dart';
 import 'package:movielog/features/rating/presentation/widgets/movie_rating_dialog.dart';
 import 'package:movielog/features/sign_up/presentation/sign_up_screen.dart';
-import 'package:movielog/features/start/presentation/start_screen.dart';
+import 'package:movielog/features/auth/presentation/login_screen.dart';
+import 'package:movielog/features/home/presentation/home_screen.dart';
+import 'package:movielog/features/start/presentation/splash_screen.dart';
 import 'package:movielog/widgets/tmdb_poster_image.dart';
 
 import 'support.dart';
@@ -41,31 +44,42 @@ void main() {
     view.resetDevicePixelRatio();
   });
 
+  late AppHarness h;
   late FakeTmdbMovieService tmdb;
   late FakeMovieLogApiService api;
 
-  Widget app(String location) => MovieLogApp(
-    initialLocation: location,
-    tmdbService: tmdb,
-    movieLogApiService: api,
-    preferences: MemoryMoviePreferences(),
-  );
+  /// 기본은 저장된 토큰이 있고 서버도 인정하는 상태다. 세션을 복원한 뒤 [location]으로 간다.
+  Widget app(String location) => h.app(initialLocation: location);
 
-  Future<void> settle(WidgetTester tester) async {
+  /// 앱을 켜고 세션 복원(내 정보 대역의 100ms)까지만 진행한다. 목표 화면이 만들어져 로딩이 막
+  /// 시작된 상태이고, TMDB 대역의 응답 지연은 아직 남아 있어 Loading 상태를 볼 수 있다.
+  Future<void> openApp(WidgetTester tester, String location) async {
+    await tester.pumpWidget(app(location));
     await tester.pump();
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pump();
   }
 
   setUp(() {
-    tmdb = FakeTmdbMovieService();
-    api = FakeMovieLogApiService();
+    h = AppHarness();
+    tmdb = h.tmdb;
+    api = h.publicApi;
   });
 
-  testWidgets('회원가입: 서버 중복 확인을 통과해야 가입 버튼이 켜지고 홈으로 간다', (tester) async {
+  /// 토큰이 없는 채로 앱을 켜 로그인 화면에서 회원가입 화면으로 들어간다.
+  Future<void> openSignUpFromLogin(WidgetTester tester) async {
+    h.storage.token = null;
     await tester.pumpWidget(app(AppRoutes.start));
-    await tester.tap(find.byKey(startButtonKey));
     await settle(tester);
+    expect(find.byType(LoginScreen), findsOneWidget);
+    await tester.tap(find.byKey(loginGoSignUpKey));
+    await settle(tester);
+  }
+
+  testWidgets('회원가입: 중복 확인을 통과해야 가입 버튼이 켜지고, 가입하면 로그인 화면으로 가서 로그인한다', (
+    tester,
+  ) async {
+    await openSignUpFromLogin(tester);
 
     ElevatedButton signUp() => tester.widget<ElevatedButton>(
       find.descendant(
@@ -76,7 +90,7 @@ void main() {
 
     await tester.enterText(find.byKey(nicknameFieldKey), '수현');
     await tester.enterText(find.byKey(emailFieldKey), 'kevin@umc.com');
-    await tester.enterText(find.byKey(passwordFieldKey), 'password1234');
+    await tester.enterText(find.byKey(passwordFieldKey), 'Password1234!');
     await tester.tap(find.byKey(termsCheckboxKey));
     await tester.pump();
     expect(signUp().onPressed, isNull); // 아직 중복 확인 전
@@ -102,12 +116,29 @@ void main() {
     await tester.ensureVisible(find.byKey(signUpButtonKey));
     await tester.tap(find.byKey(signUpButtonKey));
     await settle(tester);
-    expect(find.text('인기 영화'), findsOneWidget);
+    // 가입 요청이 실제로 나갔고(비밀번호는 그대로, 이메일·닉네임은 trim), 로그인 화면으로 돌아왔다.
+    expect(api.signUps, hasLength(1));
+    expect(api.signUps.single.toJson(), {
+      'email': 'kevin@umc.com',
+      'password': 'Password1234!',
+      'nickname': '케빈',
+    });
+    expect(find.byType(LoginScreen), findsOneWidget);
     expect(find.byType(BackButton), findsNothing);
+    expect(authOf(tester).isSignedIn, isFalse); // 가입은 로그인이 아니다
+
+    // 이메일이 미리 채워져 있으니 비밀번호만 입력해 로그인한다.
+    await tester.enterText(find.byKey(loginPasswordFieldKey), 'Password1234!');
+    await tester.tap(find.byKey(loginButtonKey));
+    await settle(tester);
+    await settle(tester); // 홈이 만들어진 뒤 시작되는 인기 영화 로딩까지
+    expect(currentLocation(tester), AppRoutes.home);
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(h.authApi.requests.single.email, 'kevin@umc.com');
   });
 
   testWidgets('닉네임 13자는 화면에서 먼저 막아 서버에 묻지 않는다', (tester) async {
-    await tester.pumpWidget(app(AppRoutes.signUp));
+    await openSignUpFromLogin(tester);
     await tester.enterText(find.byKey(nicknameFieldKey), '가' * 13);
     await tester.pump();
     expect(
@@ -124,8 +155,12 @@ void main() {
   });
 
   testWidgets('홈: Popular 앞 5개만 표시, 요청은 한 번, 카드 → 상세(TMDB id)', (tester) async {
+    tmdb.gate = Completer<void>(); // 응답을 붙잡아 로딩 상태를 먼저 확인한다
     await tester.pumpWidget(app(AppRoutes.home));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
     expect(find.bySemanticsLabel('인기 영화를 불러오는 중'), findsOneWidget);
+    tmdb.gate!.complete();
     await settle(tester);
 
     expect(find.byKey(const Key('featured-100')), findsOneWidget);
@@ -162,9 +197,11 @@ void main() {
     expect(tmdb.popularCalls, 1); // 돌아와도 다시 요청하지 않는다
   });
 
-  testWidgets('상세: 평점 Dialog 결과가 TMDB id를 movieId로 가진다', (tester) async {
+  testWidgets('상세: 별점·코멘트를 저장하면 TMDB id가 movieId인 요청이 나가고 Snackbar가 보인다', (
+    tester,
+  ) async {
     tmdb.moviesById[550] = movie(550, title: '파이트 클럽', overview: '');
-    await tester.pumpWidget(app(AppRoutes.movieDetail(550)));
+    await openApp(tester, AppRoutes.movieDetail(550));
     await settle(tester);
     // 주소로 바로 열면 Movie Details를 조회한다.
     expect(tmdb.movieCalls, [550]);
@@ -178,19 +215,83 @@ void main() {
     await tester.ensureVisible(find.byKey(rateButtonKey));
     await tester.tap(find.byKey(rateButtonKey));
     await settle(tester);
+    // 별을 고르기 전에는 코멘트를 입력해도 저장할 수 없다.
+    await tester.enterText(find.byKey(ratingCommentFieldKey), '  반전이 좋았다  ');
+    await tester.pump();
+    expect(
+      tester
+          .widget<ElevatedButton>(
+            find.descendant(
+              of: find.byKey(saveRatingButtonKey),
+              matching: find.byType(ElevatedButton),
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
     await tester.tap(dialogStar(3));
     await tester.pump();
     expect(find.text('4점'), findsOneWidget);
     await tester.tap(find.byKey(saveRatingButtonKey));
     await settle(tester);
-    expect(find.textContaining('movieId 550에 4점'), findsOneWidget);
-    expect(find.text('내 평점 4점'), findsOneWidget);
+
+    // 요청에 memberId가 없다. 누구의 평점인지는 Authorization의 토큰이 알려 준다.
+    expect(h.ratingApi.createdRequests, hasLength(1));
+    expect(h.ratingApi.createdRequests.single.toJson(), {
+      'movieId': 550, // 배열 index가 아니라 TMDB id
+      'score': 4,
+      'comment': '반전이 좋았다', // trim
+    });
+    expect(find.byType(MovieRatingDialog), findsNothing);
+    expect(find.textContaining('평점을 등록했습니다'), findsOneWidget);
+    expect(find.byKey(myRatingLabelKey), findsOneWidget);
+    // 등록한 평점은 이번 세션 목록에 들어가 마이페이지에서 수정·삭제할 수 있다.
+    expect(sessionOf(tester).ratings.single.movieId, 550);
+  });
+
+  testWidgets('상세: 로그인하지 않고 주소로 열면 로그인 화면으로 가고, 로그인하면 그 상세 화면으로 돌아온다', (
+    tester,
+  ) async {
+    tmdb.moviesById[550] = movie(550, title: '파이트 클럽');
+    h.storage.token = null;
+    await tester.pumpWidget(app(AppRoutes.movieDetail(550)));
+    await settle(tester);
+
+    expect(currentLocation(tester), AppRoutes.login);
+    expect(find.byKey(rateButtonKey), findsNothing);
+    expect(tmdb.movieCalls, isEmpty, reason: '로그인 전에는 보호 화면의 데이터를 부르지 않는다');
+
+    await tester.enterText(find.byKey(loginEmailFieldKey), 'kevin@umc.com');
+    await tester.enterText(find.byKey(loginPasswordFieldKey), 'Password1234!');
+    await tester.tap(find.byKey(loginButtonKey));
+    await settle(tester);
+
+    expect(currentLocation(tester), AppRoutes.movieDetail(550));
+    expect(find.text('파이트 클럽'), findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.byKey(rateButtonKey)).onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('시작 화면: 토큰을 확인하는 동안 인디케이터를 보여주고 서버 응답 뒤에 홈으로 간다', (tester) async {
+    h.memberApi.meGate = Completer<void>();
+    await tester.pumpWidget(app(AppRoutes.start));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(SplashScreen), findsOneWidget);
+    expect(find.byType(HomeScreen), findsNothing);
+    expect(currentLocation(tester), AppRoutes.start);
+
+    h.memberApi.meGate!.complete();
+    await settle(tester);
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(currentLocation(tester), AppRoutes.home);
   });
 
   testWidgets('목록: Loading → Success 30편, 장르 Chip은 with_genres 재요청', (
     tester,
   ) async {
-    await tester.pumpWidget(app(AppRoutes.movies));
+    await openApp(tester, AppRoutes.movies);
     await tester.pump();
     expect(find.byType(MovieListLoading), findsOneWidget);
     await settle(tester);
@@ -229,7 +330,7 @@ void main() {
     tmdb
       ..perPage = 0
       ..totalPages = 0;
-    await tester.pumpWidget(app(AppRoutes.movies));
+    await openApp(tester, AppRoutes.movies);
     await settle(tester);
     expect(find.byType(MovieListEmpty), findsOneWidget);
     expect(find.text('조건에 맞는 영화가 없습니다.'), findsOneWidget);
@@ -237,7 +338,7 @@ void main() {
 
   testWidgets('목록: Error → 다시 시도 → Success', (tester) async {
     tmdb.failDiscover = true;
-    await tester.pumpWidget(app(AppRoutes.movies));
+    await openApp(tester, AppRoutes.movies);
     await settle(tester);
     expect(find.byType(MovieListError), findsOneWidget);
     expect(find.text('네트워크 상태를 확인하고 다시 시도해 주세요.'), findsOneWidget);
@@ -251,7 +352,7 @@ void main() {
   });
 
   testWidgets('목록: 새로고침 실패 시 목록 유지 + 재시도 Dialog → 다시 시도로 교체', (tester) async {
-    await tester.pumpWidget(app(AppRoutes.movies));
+    await openApp(tester, AppRoutes.movies);
     await settle(tester);
     expect(find.byKey(const Key('movieCard-1')), findsOneWidget);
 
@@ -279,7 +380,7 @@ void main() {
   });
 
   testWidgets('목록: 재시도 Dialog에서 취소하면 기존 목록 그대로', (tester) async {
-    await tester.pumpWidget(app(AppRoutes.movies));
+    await openApp(tester, AppRoutes.movies);
     await settle(tester);
     tmdb.failDiscover = true;
     await tester.drag(find.byType(MovieGrid), const Offset(0, 500));
@@ -292,7 +393,7 @@ void main() {
   });
 
   testWidgets('목록: BottomSheet 다중 선택 → 장르 ID 목록으로 요청', (tester) async {
-    await tester.pumpWidget(app(AppRoutes.movies));
+    await openApp(tester, AppRoutes.movies);
     await settle(tester);
     await tester.tap(find.byKey(filterButtonKey));
     await settle(tester);
@@ -332,14 +433,14 @@ void main() {
               ..perPage = 2
               ..totalPages = 1)
             .discoverPageFor(page, genreIds, posterPath: null);
-    await tester.pumpWidget(app(AppRoutes.movies));
+    await openApp(tester, AppRoutes.movies);
     await settle(tester);
     expect(find.byKey(posterPlaceholderKey), findsNWidgets(2));
     expect(find.text('포스터 없음'), findsNWidgets(2));
   });
 
   testWidgets('NavigationBar로 탭을 전환한다', (tester) async {
-    await tester.pumpWidget(app(AppRoutes.home));
+    await openApp(tester, AppRoutes.home);
     await settle(tester);
     await tester.tap(find.text('영화').last);
     await settle(tester);
