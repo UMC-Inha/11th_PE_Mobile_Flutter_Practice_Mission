@@ -148,31 +148,11 @@ class CachingMovieLogApiService implements MovieLogApiService {
   Future<List<MemberRatingDto>> fetchMemberRatings(int memberId) =>
       _get('ratings:$memberId', () => _real.fetchMemberRatings(memberId));
 
-  // 쓰기는 녹화하지 않고 실제 Service로 그대로 보낸다. (이 인증 테스트는 조회만 쓴다.)
+  // 쓰기(회원가입)는 녹화하지 않고 실제 Service로 그대로 보낸다. 평점 등록·수정·삭제와
+  // 로그인·내 정보는 8주차부터 토큰이 필요한 별도 Service(RatingApiService 등)가 맡는다.
   @override
   Future<CommonResponse<SignUpResult>> signUp(CreateMemberRequest request) =>
       _real.signUp(request);
-
-  @override
-  Future<void> createRating({
-    required int memberId,
-    required CreateRatingRequest request,
-  }) => _real.createRating(memberId: memberId, request: request);
-
-  @override
-  Future<void> updateRating({
-    required int memberId,
-    required int ratingId,
-    required UpdateRatingRequest request,
-  }) => _real.updateRating(
-    memberId: memberId,
-    ratingId: ratingId,
-    request: request,
-  );
-
-  @override
-  Future<void> deleteRating({required int memberId, required int ratingId}) =>
-      _real.deleteRating(memberId: memberId, ratingId: ratingId);
 }
 
 /// 실제 서버를 부르는 테스트는 MOVIELOG_LIVE=1 일 때만 돈다.

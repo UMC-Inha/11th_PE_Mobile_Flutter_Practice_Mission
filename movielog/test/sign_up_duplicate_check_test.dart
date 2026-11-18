@@ -3,8 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:movielog/app/app_router.dart';
-import 'package:movielog/app/movie_log_app.dart';
+import 'package:movielog/features/auth/presentation/login_screen.dart';
 import 'package:movielog/features/sign_up/presentation/sign_up_screen.dart';
 
 import 'support.dart';
@@ -27,27 +26,20 @@ void main() {
     view.resetDevicePixelRatio();
   });
 
-  late FakeTmdbMovieService tmdb;
+  late AppHarness h;
   late FakeMovieLogApiService api;
 
   setUp(() {
-    tmdb = FakeTmdbMovieService();
-    api = FakeMovieLogApiService();
+    // 가입 전이라 저장된 토큰이 없다. 회원가입 화면은 로그인 화면의 "회원가입" 링크로 연다.
+    h = AppHarness(token: null);
+    api = h.publicApi;
   });
 
-  Future<void> openSignUp(WidgetTester tester) => tester.pumpWidget(
-    MovieLogApp(
-      initialLocation: AppRoutes.signUp,
-      tmdbService: tmdb,
-      movieLogApiService: api,
-      preferences: MemoryMoviePreferences(),
-    ),
-  );
-
-  Future<void> settle(WidgetTester tester) async {
-    await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
-    await tester.pumpAndSettle();
+  Future<void> openSignUp(WidgetTester tester) async {
+    await tester.pumpWidget(h.app());
+    await settle(tester);
+    await tester.tap(find.byKey(loginGoSignUpKey));
+    await settle(tester);
   }
 
   ElevatedButton buttonOf(WidgetTester tester, Key key) =>

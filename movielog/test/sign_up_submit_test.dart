@@ -2,12 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:movielog/app/app_router.dart';
-import 'package:movielog/app/movie_log_app.dart';
 import 'package:movielog/data/models/create_member_request.dart';
-import 'package:movielog/features/movies/presentation/movie_list_screen.dart';
+import 'package:movielog/features/auth/presentation/login_screen.dart';
 import 'package:movielog/features/sign_up/presentation/sign_up_screen.dart';
-import 'package:movielog/view_models/learning_member_session.dart';
 import 'package:movielog/view_models/sign_up_view_model.dart';
 import 'package:movielog/view_models/submit_status.dart';
 
@@ -43,19 +40,22 @@ void main() {
       expect(vm.emailCheckStatus, CheckStatus.available);
     }
 
-    test('성공: idle → submitting → success이고 서버가 준 memberId를 읽는다', () async {
-      final seen = <SubmitStatus>[];
-      vm.addListener(() => seen.add(vm.submitStatus));
-      expect(vm.submitStatus, SubmitStatus.idle);
+    test(
+      '성공: idle → submitting → success이고 서버가 준 이메일을 보관한다(가입은 로그인이 아니다)',
+      () async {
+        final seen = <SubmitStatus>[];
+        vm.addListener(() => seen.add(vm.submitStatus));
+        expect(vm.submitStatus, SubmitStatus.idle);
 
-      await vm.submit(_request);
+        await vm.submit(_request);
 
-      expect(seen, [SubmitStatus.submitting, SubmitStatus.success]);
-      expect(vm.createdMemberId, 101);
-      expect(vm.passwordErrorText, isNull);
-      expect(vm.snackbarMessage, isNull);
-      expect(api.signUps.single.email, 'kevin@umc.com');
-    });
+        expect(seen, [SubmitStatus.submitting, SubmitStatus.success]);
+        expect(vm.createdEmail, 'kevin@umc.com');
+        expect(vm.passwordErrorText, isNull);
+        expect(vm.snackbarMessage, isNull);
+        expect(api.signUps.single.email, 'kevin@umc.com');
+      },
+    );
 
     test('제출 중에는 중복 탭을 무시한다(요청이 한 번만 나간다)', () async {
       api.writeGate = Completer<void>();
@@ -72,11 +72,11 @@ void main() {
       expect(api.signUps, hasLength(1));
     });
 
-    test('201인데 memberId가 없으면 가입을 완료한 것으로 표시하지 않는다', () async {
+    test('201인데 result가 없으면 가입을 완료한 것으로 표시하지 않는다', () async {
       api.signUpWithoutResult = true;
       await vm.submit(_request);
       expect(vm.submitStatus, SubmitStatus.error);
-      expect(vm.createdMemberId, isNull);
+      expect(vm.createdEmail, isNull);
       expect(vm.snackbarMessage, contains('가입 결과를 확인하지 못했습니다'));
     });
 
@@ -201,7 +201,7 @@ void main() {
       api.writeGate!.complete();
       // dispose된 뒤 notifyListeners가 불리면 여기서 예외가 난다.
       await pending;
-      expect(local.createdMemberId, isNull);
+      expect(local.createdEmail, isNull);
     });
   });
 
@@ -223,30 +223,23 @@ void main() {
       view.resetDevicePixelRatio();
     });
 
-    late FakeTmdbMovieService tmdb;
+    // 가입 전이므로 저장된 토큰이 없다. 그래서 Router가 로그인 화면으로 보내고,
+    // 회원가입 화면은 로그인 화면의 "회원가입" 링크로 들어간다(실제 사용 흐름과 같다).
+    late AppHarness h;
     late FakeMovieLogApiService api;
-    late LearningMemberSession session;
 
     setUp(() {
-      tmdb = FakeTmdbMovieService();
-      api = FakeMovieLogApiService();
-      session = LearningMemberSession();
+      h = AppHarness(token: null);
+      api = h.publicApi;
     });
 
-    Future<void> openSignUp(WidgetTester tester) => tester.pumpWidget(
-      MovieLogApp(
-        initialLocation: AppRoutes.signUp,
-        tmdbService: tmdb,
-        movieLogApiService: api,
-        preferences: MemoryMoviePreferences(),
-        session: session,
-      ),
-    );
-
-    Future<void> settle(WidgetTester tester) async {
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pumpAndSettle();
+    Future<void> openSignUp(WidgetTester tester) async {
+      await tester.pumpWidget(h.app());
+      await settle(tester);
+      expect(find.byType(LoginScreen), findsOneWidget);
+      await tester.tap(find.byKey(loginGoSignUpKey));
+      await settle(tester);
+      expect(find.byKey(nicknameFieldKey), findsOneWidget);
     }
 
     Future<void> type(WidgetTester tester, Key key, String text) async {
@@ -332,7 +325,8 @@ void main() {
       // Snackbar가 아니라 입력칸의 에러 문구다(한 곳에만 보인다).
       expect(find.byType(SnackBar), findsNothing);
       expect(find.byKey(nicknameFieldKey), findsOneWidget); // 화면은 그대로
-      expect(session.memberId, isNull);
+      expect(authOf(tester).isSignedIn, isFalse);
+      expect(h.storage.token, isNull);
 
       // 비밀번호를 고치기 시작하면 서버 오류 문구가 사라진다.
       await type(tester, passwordFieldKey, 'Aa1!${'x' * 10}');
@@ -351,7 +345,7 @@ void main() {
 
       expect(find.text('이미 사용 중인 이메일입니다.'), findsOneWidget);
       expect(find.byType(SnackBar), findsOneWidget);
-      expect(session.memberId, isNull);
+      expect(authOf(tester).isSignedIn, isFalse);
       expect(find.byKey(nicknameFieldKey), findsOneWidget);
       // 다시 확인해야 한다.
       expect(find.text('사용할 수 있는 이메일이에요.'), findsNothing);
@@ -361,14 +355,32 @@ void main() {
       expect(find.text('이미 가입된 이메일이에요.'), findsOneWidget);
     });
 
-    testWidgets('성공하면 세션에 memberId를 보관하고 영화 목록으로 간다', (tester) async {
+    testWidgets('가입에 성공해도 로그인되지 않는다: 로그인 화면으로 가고 이메일만 미리 채운다', (tester) async {
       await openSignUp(tester);
       await fillValidForm(tester);
       await tapKey(tester, signUpButtonKey);
       await settle(tester);
 
-      expect(session.memberId, 101);
-      expect(find.byType(MovieListScreen), findsOneWidget);
+      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(find.text('가입이 완료됐어요. 로그인해 주세요.'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(loginEmailFieldKey))
+            .controller!
+            .text,
+        'kevin@umc.com',
+      );
+      // 비밀번호는 넘기지 않고, 가입 응답으로 토큰이 생기지도 않는다.
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(loginPasswordFieldKey))
+            .controller!
+            .text,
+        isEmpty,
+      );
+      expect(authOf(tester).isSignedIn, isFalse);
+      expect(h.storage.token, isNull);
+      expect(h.authApi.requests, isEmpty, reason: '가입이 자동 로그인을 부르지 않는다');
     });
 
     testWidgets('제출 중에는 버튼이 로딩이고 뒤로가기가 막히며, 끝나면 다시 나갈 수 있다', (tester) async {
@@ -409,8 +421,16 @@ void main() {
       api.writeGate!.complete();
       await settle(tester);
       expect(popScope().canPop, isTrue);
-      expect(await systemBack(tester), isFalse, reason: '끝났으면 다시 나갈 수 있다');
       expect(find.text('이미 사용 중인 이메일입니다.'), findsOneWidget);
+      // 끝났으면 뒤로 갈 수 있다. 로그인 화면 위에 push된 화면이라 로그인 화면으로 돌아간다.
+      expect(
+        await systemBack(tester),
+        isTrue,
+        reason: '끝났으면 Router가 뒤로 가기를 처리한다',
+      );
+      await settle(tester);
+      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(find.byKey(nicknameFieldKey), findsNothing);
     });
   });
 }

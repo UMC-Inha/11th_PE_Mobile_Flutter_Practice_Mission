@@ -3,11 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/app/app_router.dart';
-import 'package:movielog/app/movie_log_app.dart';
+import 'package:movielog/features/auth/presentation/login_screen.dart';
 import 'package:movielog/features/my_page/presentation/my_ratings_screen.dart';
 import 'package:movielog/features/my_page/presentation/widgets/delete_rating_dialogs.dart';
 import 'package:movielog/features/rating/presentation/widgets/movie_rating_dialog.dart';
-import 'package:movielog/view_models/learning_member_session.dart';
 
 import 'support.dart';
 
@@ -40,40 +39,38 @@ void main() {
     view.resetDevicePixelRatio();
   });
 
-  late FakeTmdbMovieService tmdb;
-  late FakeMovieLogApiService api;
+  late AppHarness h;
 
   setUp(() {
-    tmdb = FakeTmdbMovieService(delay: Duration.zero);
-    api = FakeMovieLogApiService();
-    tmdb.moviesById
+    h = AppHarness();
+    h.tmdb.moviesById
       ..[550] = movie(550, title: '파이트 클럽')
       ..[155] = movie(155, title: '다크 나이트')
       ..[27205] = movie(27205, title: '인셉션')
       ..[680] = movie(680, title: '펄프 픽션');
   });
 
-  Future<void> open(WidgetTester tester, {bool signedUp = true}) async {
-    await tester.pumpWidget(
-      MovieLogApp(
-        initialLocation: AppRoutes.myRatings,
-        tmdbService: tmdb,
-        movieLogApiService: api,
-        preferences: MemoryMoviePreferences(),
-        session: signedUp ? (LearningMemberSession()..setMemberId(101)) : null,
-      ),
+  /// 저장된 토큰으로 세션을 복원해 /my/ratings를 열고, 평점 2개(ratingId 2·1)를 이번 세션에 심는다.
+  /// 서버에는 "내 평점 목록" API가 없으므로 목록은 이번 로그인에서 등록한 평점으로만 채워진다.
+  Future<void> open(WidgetTester tester, {bool four = false}) async {
+    await tester.pumpWidget(h.app(initialLocation: AppRoutes.myRatings));
+    await settle(tester);
+    seedRatings(
+      tester,
+      h,
+      four
+          ? [
+              memberRating(4, 155, score: 3, comment: null),
+              memberRating(3, 550, score: 5, comment: '최고'),
+              memberRating(2, 27205, score: 4, comment: '꿈속의 꿈'),
+              memberRating(1, 680, score: 2, comment: '그저 그랬다'),
+            ]
+          : [
+              memberRating(2, 155, score: 4, comment: '다시 봐도 명작'),
+              memberRating(1, 550, score: 5, comment: '최고의 영화!'),
+            ],
     );
     await settle(tester);
-  }
-
-  /// 영화 4편의 평점 4개(ratingId 4·3·2·1)로 시작한다.
-  void fourRatings() {
-    api.ratings = [
-      memberRating(4, 155, score: 3, comment: null),
-      memberRating(3, 550, score: 5, comment: '최고'),
-      memberRating(2, 27205, score: 4, comment: '꿈속의 꿈'),
-      memberRating(1, 680, score: 2, comment: '그저 그랬다'),
-    ];
   }
 
   /// 시간을 일정만큼만 흘린다. 로딩 인디케이터가 도는 동안에는 pumpAndSettle을 쓸 수 없다.
@@ -97,15 +94,8 @@ void main() {
         ),
       );
 
-  testWidgets('회원가입 전에는 평점을 조회하지 않고 가입을 안내한다', (tester) async {
-    await open(tester, signedUp: false);
-    expect(find.text('학습용 회원가입이 필요합니다.'), findsOneWidget);
-    expect(api.fetchCalls, 0);
-  });
-
-  testWidgets('조회는 가입한 회원의 memberId로 하고, 카드마다 수정·삭제 버튼이 있다', (tester) async {
+  testWidgets('카드마다 수정·삭제 버튼이 있고 편집 토글이 보이며 NavigationBar는 없다', (tester) async {
     await open(tester);
-    expect(api.ratingMemberIds, [101]);
     for (final id in [1, 2]) {
       expect(_editButton(id), findsOneWidget);
       expect(_deleteButton(id), findsOneWidget);
@@ -137,24 +127,22 @@ void main() {
       await tester.tap(find.byKey(saveRatingButtonKey));
       await settle(tester);
 
-      // PATCH에는 score와 comment를 항상 실어 보낸다.
-      expect(api.updatedRatings.single.ratingId, 2);
-      expect(api.updatedRatings.single.memberId, 101);
-      expect(api.updatedRatings.single.request.toJson(), {
+      // PATCH에는 score와 comment를 항상 실어 보낸다. 경로에 memberId가 없다(/ratings/{id}).
+      expect(h.ratingApi.updatedCalls.single.ratingId, 2);
+      expect(h.ratingApi.updatedCalls.single.request.toJson(), {
         'score': 2,
         'comment': '다시 보니 별로',
       });
-      // 저장 성공 뒤 서버 목록을 다시 조회했다.
-      expect(api.fetchCalls, 2);
+      // 응답으로 받은 평점으로 목록을 바꾼다(다시 조회할 목록 API가 없다).
       expect(find.byType(MovieRatingDialog), findsNothing);
       expect(find.text('다시 보니 별로'), findsOneWidget);
       expect(find.text('★★☆☆☆  2점'), findsOneWidget);
       expect(find.text('평점을 수정했어요.'), findsOneWidget);
+      expect(find.text('3.5'), findsOneWidget); // (2 + 5) / 2
     });
 
     testWidgets('comment가 null인 평점은 코멘트 칸이 빈 채로 열린다', (tester) async {
-      fourRatings();
-      await open(tester);
+      await open(tester, four: true);
       await tester.tap(_editButton(4));
       await settle(tester);
       final field = tester.widget<TextField>(find.byKey(ratingCommentFieldKey));
@@ -168,7 +156,10 @@ void main() {
       await tester.enterText(find.byKey(ratingCommentFieldKey), '');
       await tester.tap(find.byKey(saveRatingButtonKey));
       await settle(tester);
-      expect(api.updatedRatings.single.request.toJson()['comment'], isNull);
+      expect(
+        h.ratingApi.updatedCalls.single.request.toJson()['comment'],
+        isNull,
+      );
       expect(find.text('최고의 영화!'), findsNothing);
     });
 
@@ -178,18 +169,18 @@ void main() {
       await settle(tester);
       await tester.tap(find.byKey(cancelRatingButtonKey));
       await settle(tester);
-      expect(api.updatedRatings, isEmpty);
-      expect(api.fetchCalls, 1);
+      expect(h.ratingApi.updatedCalls, isEmpty);
       expect(find.text('평점을 수정했어요.'), findsNothing);
     });
 
     testWidgets('저장 실패: Dialog에 서버 문구가 보이고 입력은 유지되며, 목록은 그대로다', (tester) async {
-      api.failures['updateRating'] = FakeMovieLogApiService.badResponse(
-        '/members/101/ratings/2',
+      await open(tester);
+      h.ratingApi.failures['update'] = apiFailure(
+        '/ratings/2',
         400,
+        code: 'RATING400_1',
         message: '별점은 5점 이하여야 합니다.',
       );
-      await open(tester);
       await tester.tap(_editButton(2));
       await settle(tester);
       await tester.enterText(find.byKey(ratingCommentFieldKey), '고친 코멘트');
@@ -206,8 +197,8 @@ void main() {
         '고친 코멘트',
       );
       expect(elevated(tester, saveRatingButtonKey).onPressed, isNotNull);
-      expect(api.fetchCalls, 1); // 400은 다시 조회하지 않는다
       expect(find.text('평점을 수정했어요.'), findsNothing);
+      expect(authOf(tester).isSignedIn, isTrue); // 입력 오류는 로그아웃이 아니다
 
       // 닫으면 목록은 수정 전 그대로다.
       await tester.tap(find.byKey(cancelRatingButtonKey));
@@ -215,51 +206,67 @@ void main() {
       expect(find.text('다시 봐도 명작'), findsOneWidget);
     });
 
-    testWidgets('저장은 성공했는데 목록 조회만 실패하면 Dialog는 성공으로 닫히고, 조회만 다시 시도한다', (
-      tester,
-    ) async {
+    testWidgets('403(내 평점이 아님)은 Dialog에 서버 문구만 보이고 로그아웃하지 않는다', (tester) async {
       await open(tester);
-      api.failFetchTimes = 1;
+      h.ratingApi.failures['update'] = apiFailure(
+        '/ratings/2',
+        403,
+        code: 'RATING403_1',
+        message: '본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.',
+      );
       await tester.tap(_editButton(2));
       await settle(tester);
-      await tester.tap(_star(0)); // 1점
-      await tester.pump();
       await tester.tap(find.byKey(saveRatingButtonKey));
       await settle(tester);
 
-      // 저장은 끝났다: Dialog가 닫히고 성공 안내가 보인다.
-      expect(find.byType(MovieRatingDialog), findsNothing);
-      expect(find.text('평점을 수정했어요.'), findsOneWidget);
-      expect(api.updatedRatings, hasLength(1));
-      // 목록 영역에는 "조회만 다시" 안내와 재시도 버튼이 있다.
-      expect(find.byKey(myRatingsRefreshWarningKey), findsOneWidget);
-      expect(
-        find.text('저장은 완료됐지만 목록을 불러오지 못했습니다. 조회만 다시 시도해 주세요.'),
-        findsOneWidget,
-      );
-
-      await tester.tap(find.byKey(myRatingsRetryKey));
-      await settle(tester);
-      // GET만 다시 나갔고 PATCH는 한 번뿐이다(같은 쓰기를 다시 보내 409가 나지 않는다).
-      expect(api.updatedRatings, hasLength(1));
-      expect(find.byKey(myRatingsRefreshWarningKey), findsNothing);
-      expect(find.text('★☆☆☆☆  1점'), findsOneWidget);
+      expect(find.byType(MovieRatingDialog), findsOneWidget);
+      expect(find.text('본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.'), findsOneWidget);
+      expect(authOf(tester).isSignedIn, isTrue);
+      expect(h.storage.token, isNotNull);
+      expect(currentLocation(tester), AppRoutes.myRatings);
     });
-  });
 
-  testWidgets('목록 조회가 실패한 상태에서는 평균 점수도 이전 값 대신 -로 보인다', (tester) async {
-    await open(tester); // 시드: 4점·5점 → 평균 4.5
-    expect(find.text('4.5'), findsOneWidget);
-    api.failFetchTimes = 1;
-    await tester.tap(_editButton(2));
-    await settle(tester);
-    await tester.tap(find.byKey(saveRatingButtonKey));
-    await settle(tester);
+    testWidgets('토큰 만료(AUTH401_3)면 세션을 정리하고 로그인 화면에서 만료를 한 번 안내한다', (
+      tester,
+    ) async {
+      await open(tester);
+      h.ratingApi.failures['update'] = apiFailure(
+        '/ratings/2',
+        401,
+        code: 'AUTH401_3',
+        message: '토큰이 만료되었습니다.',
+      );
+      await tester.tap(_editButton(2));
+      await settle(tester);
+      await tester.tap(find.byKey(saveRatingButtonKey));
+      await settle(tester);
 
-    expect(find.byKey(myRatingsRefreshWarningKey), findsOneWidget);
-    // "남긴 평점"이 -인데 평균만 낡은 값(4.5)을 보여 주면 서로 어긋난다.
-    expect(find.text('4.5'), findsNothing);
-    expect(find.text('-'), findsNWidgets(2));
+      expect(authOf(tester).isSignedIn, isFalse);
+      expect(h.storage.token, isNull);
+      expect(currentLocation(tester), AppRoutes.login);
+      expect(find.byType(LoginScreen), findsOneWidget);
+      // 만료 안내는 한 번만 뜬다.
+      expect(find.text(sessionExpiredMessage), findsOneWidget);
+      // 열려 있던 수정 Dialog가 로그인 화면 위에 남아 있으면 안 된다.
+      expect(find.byType(MovieRatingDialog), findsNothing);
+    });
+
+    testWidgets('수정하려는 평점이 서버에 이미 없으면(404) 문구를 보여주고 목록에서도 사라진다', (
+      tester,
+    ) async {
+      await open(tester);
+      h.ratingApi.serverRatings.remove(2);
+      await tester.tap(_editButton(2));
+      await settle(tester);
+      await tester.tap(find.byKey(saveRatingButtonKey));
+      await settle(tester);
+
+      expect(find.text('해당 평점을 찾을 수 없습니다.'), findsOneWidget);
+      await tester.tap(find.byKey(cancelRatingButtonKey));
+      await settle(tester);
+      expect(_tile(2), findsNothing);
+      expect(_tile(1), findsOneWidget);
+    });
   });
 
   group('삭제', () {
@@ -272,7 +279,7 @@ void main() {
 
       await tester.tap(find.byKey(deleteRatingCancelKey));
       await settle(tester);
-      expect(api.deletedRatings, isEmpty);
+      expect(h.ratingApi.deletedIds, isEmpty);
       expect(_tile(1), findsOneWidget);
     });
 
@@ -283,7 +290,7 @@ void main() {
       await tester.tap(find.byKey(deleteRatingConfirmKey));
       await settle(tester);
 
-      expect(api.deletedRatings.single, (memberId: 101, ratingId: 2));
+      expect(h.ratingApi.deletedIds, [2]);
       expect(_tile(2), findsNothing);
       expect(_tile(1), findsOneWidget);
       expect(find.text('평점을 삭제했어요.'), findsOneWidget);
@@ -293,7 +300,7 @@ void main() {
       await tester.tap(find.byKey(deleteRatingConfirmKey));
       await settle(tester);
       expect(find.byKey(myRatingsEmptyKey), findsOneWidget);
-      expect(find.text('아직 남긴 평점이 없어요.'), findsOneWidget);
+      expect(find.text('이번 로그인에서 등록한 평점이 없어요.'), findsOneWidget);
       expect(
         find.byKey(myRatingsEditToggleKey),
         findsNothing,
@@ -302,7 +309,7 @@ void main() {
 
     testWidgets('삭제 요청 중에는 Dialog가 유지되고 닫히지 않는다', (tester) async {
       await open(tester);
-      api.writeGate = Completer<void>();
+      h.ratingApi.writeGate = Completer<void>();
       await tester.tap(_deleteButton(1));
       await settle(tester);
       await tester.tap(find.byKey(deleteRatingConfirmKey));
@@ -330,19 +337,20 @@ void main() {
       await pumpFor(tester);
       expect(find.text('평점을 삭제할까요?'), findsOneWidget);
 
-      api.writeGate!.complete();
+      h.ratingApi.writeGate!.complete();
       await settle(tester);
       expect(find.text('평점을 삭제할까요?'), findsNothing);
       expect(_tile(1), findsNothing);
     });
 
     testWidgets('삭제 실패: Dialog에 서버 문구가 보이고 로딩이 풀려 다시 시도할 수 있다', (tester) async {
-      api.failures['deleteRating'] = FakeMovieLogApiService.badResponse(
-        '/members/101/ratings/1',
+      await open(tester);
+      h.ratingApi.failures['delete'] = apiFailure(
+        '/ratings/1',
         403,
+        code: 'RATING403_1',
         message: '본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.',
       );
-      await open(tester);
       await tester.tap(_deleteButton(1));
       await settle(tester);
       await tester.tap(find.byKey(deleteRatingConfirmKey));
@@ -351,11 +359,33 @@ void main() {
       expect(find.byKey(deleteRatingErrorKey), findsOneWidget);
       expect(find.text('본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.'), findsOneWidget);
       expect(elevated(tester, deleteRatingConfirmKey).onPressed, isNotNull);
+      expect(authOf(tester).isSignedIn, isTrue); // 403은 로그아웃이 아니다
 
-      api.failures.clear();
+      h.ratingApi.failures.clear();
       await tester.tap(find.byKey(deleteRatingConfirmKey));
       await settle(tester);
       expect(_tile(1), findsNothing);
+    });
+
+    testWidgets('삭제 중 토큰이 무효(AUTH401_2)면 로그인 화면으로 가고 Dialog는 남지 않는다', (
+      tester,
+    ) async {
+      await open(tester);
+      h.ratingApi.failures['delete'] = apiFailure(
+        '/ratings/1',
+        401,
+        code: 'AUTH401_2',
+        message: '유효하지 않은 토큰입니다.',
+      );
+      await tester.tap(_deleteButton(1));
+      await settle(tester);
+      await tester.tap(find.byKey(deleteRatingConfirmKey));
+      await settle(tester);
+
+      expect(currentLocation(tester), AppRoutes.login);
+      expect(h.storage.token, isNull);
+      expect(find.text('평점을 삭제할까요?'), findsNothing);
+      expect(find.text(sessionExpiredMessage), findsOneWidget);
     });
   });
 
@@ -363,8 +393,7 @@ void main() {
     testWidgets('편집을 누르면 수정·삭제 버튼 대신 체크박스가 보이고, 취소하면 기본 목록으로 돌아온다', (
       tester,
     ) async {
-      fourRatings();
-      await open(tester);
+      await open(tester, four: true);
       await tester.tap(find.byKey(myRatingsEditToggleKey));
       await settle(tester);
 
@@ -399,15 +428,14 @@ void main() {
     testWidgets('확인하면 Dialog는 바로 닫히고, 삭제 중에는 로딩 오버레이와 이탈 방지가 걸린다', (
       tester,
     ) async {
-      fourRatings();
-      await open(tester);
+      await open(tester, four: true);
       await tester.tap(find.byKey(myRatingsEditToggleKey));
       await settle(tester);
       await tester.tap(_tile(4));
       await tester.tap(_tile(2));
       await settle(tester);
 
-      api.writeGate = Completer<void>();
+      h.ratingApi.writeGate = Completer<void>();
       await tester.tap(find.byKey(deleteSelectedButtonKey));
       await settle(tester);
       expect(find.text('선택한 2개의 평점을 삭제할까요?'), findsOneWidget);
@@ -441,9 +469,9 @@ void main() {
         isNull,
       );
 
-      api.writeGate!.complete();
+      h.ratingApi.writeGate!.complete();
       await settle(tester);
-      expect(api.deletedRatings.map((e) => e.ratingId), [4, 2]);
+      expect(h.ratingApi.deletedIds, [4, 2]);
       expect(_tile(4), findsNothing);
       expect(_tile(2), findsNothing);
       expect(_tile(3), findsOneWidget);
@@ -459,8 +487,7 @@ void main() {
     testWidgets('삭제 중에는 하단 삭제 버튼도 비활성이라 두 번째 확인 Dialog가 열리지 않는다', (
       tester,
     ) async {
-      fourRatings();
-      await open(tester);
+      await open(tester, four: true);
       await tester.tap(find.byKey(myRatingsEditToggleKey));
       await settle(tester);
       await tester.tap(_tile(4));
@@ -468,7 +495,7 @@ void main() {
       await settle(tester);
       expect(elevated(tester, deleteSelectedButtonKey).onPressed, isNotNull);
 
-      api.writeGate = Completer<void>();
+      h.ratingApi.writeGate = Completer<void>();
       await tester.tap(find.byKey(deleteSelectedButtonKey));
       await settle(tester);
       await tester.tap(find.byKey(deleteSelectedConfirmKey));
@@ -483,17 +510,16 @@ void main() {
       await pumpFor(tester);
       expect(find.text('선택한 2개의 평점을 삭제할까요?'), findsNothing);
 
-      api.writeGate!.complete();
+      h.ratingApi.writeGate!.complete();
       await settle(tester);
-      expect(api.deletedRatings, hasLength(2));
+      expect(h.ratingApi.deletedIds, hasLength(2));
     });
 
     testWidgets('일부만 실패하면 성공한 항목만 사라지고, 실패 개수를 Snackbar로 알리며 선택은 유지된다', (
       tester,
     ) async {
-      fourRatings();
-      api.failDeleteIds.add(3);
-      await open(tester);
+      h.ratingApi.failDeleteIds.add(3);
+      await open(tester, four: true);
       await tester.tap(find.byKey(myRatingsEditToggleKey));
       await settle(tester);
       await tester.tap(_tile(4));
@@ -520,8 +546,7 @@ void main() {
     });
 
     testWidgets('선택 확인 Dialog에서 취소하면 삭제 요청이 나가지 않는다', (tester) async {
-      fourRatings();
-      await open(tester);
+      await open(tester, four: true);
       await tester.tap(find.byKey(myRatingsEditToggleKey));
       await settle(tester);
       await tester.tap(_tile(2));
@@ -531,8 +556,33 @@ void main() {
       await tester.tap(find.byKey(deleteSelectedCancelKey));
       await settle(tester);
 
-      expect(api.deletedRatings, isEmpty);
+      expect(h.ratingApi.deletedIds, isEmpty);
       expect(tester.widget<Checkbox>(_checkbox(2)).value, isTrue); // 선택은 그대로
+    });
+
+    testWidgets('선택 삭제 중 토큰이 만료되면 나머지는 보내지 않고 로그인 화면으로 간다', (tester) async {
+      await open(tester, four: true);
+      h.ratingApi.failures['delete'] = apiFailure(
+        '/ratings/4',
+        401,
+        code: 'AUTH401_3',
+        message: '토큰이 만료되었습니다.',
+      );
+      await tester.tap(find.byKey(myRatingsEditToggleKey));
+      await settle(tester);
+      await tester.tap(_tile(4));
+      await tester.tap(_tile(3));
+      await tester.tap(_tile(2));
+      await settle(tester);
+      await tester.tap(find.byKey(deleteSelectedButtonKey));
+      await settle(tester);
+      await tester.tap(find.byKey(deleteSelectedConfirmKey));
+      await settle(tester);
+
+      expect(h.ratingApi.deletedIds, [4], reason: '첫 401 뒤에는 요청을 더 보내지 않는다');
+      expect(currentLocation(tester), AppRoutes.login);
+      expect(h.storage.token, isNull);
+      expect(find.text(sessionExpiredMessage), findsOneWidget);
     });
   });
 }

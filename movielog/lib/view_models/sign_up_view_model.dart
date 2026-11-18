@@ -44,8 +44,9 @@ class SignUpViewModel extends ChangeNotifier {
   /// 회원가입 제출 상태. submitting인 동안 중복 탭과 화면 이탈을 막는다.
   SubmitStatus submitStatus = SubmitStatus.idle;
 
-  /// 가입 성공 응답에서 읽은 실제 memberId. 성공 전에는 null.
-  int? createdMemberId;
+  /// 가입 성공 응답의 이메일. 로그인 화면의 이메일 칸을 미리 채우는 데 쓴다(비밀번호는 보관하지 않는다).
+  /// 성공 전에는 null. 가입은 로그인이 아니라서 memberId를 보관하지 않는다.
+  String? createdEmail;
 
   /// 비밀번호 입력칸에 바로 붙일 수 있는 서버 오류(필드 단위). TextFormField.errorText에 연결한다.
   String? passwordErrorText;
@@ -98,7 +99,7 @@ class SignUpViewModel extends ChangeNotifier {
   Future<void> submit(CreateMemberRequest request) async {
     if (isSubmitting) return; // 요청 중 중복 탭은 무시한다.
     submitStatus = SubmitStatus.submitting;
-    createdMemberId = null;
+    createdEmail = null;
     passwordErrorText = null;
     snackbarMessage = null;
     _notify();
@@ -106,10 +107,10 @@ class SignUpViewModel extends ChangeNotifier {
     try {
       final response = await _api.signUp(request);
       if (_disposed) return;
-      final id = response.result?.memberId;
-      // 201인데 memberId가 없으면 가입을 완료한 것으로 표시하지 않고 계약 오류로 처리한다.
-      if (id == null) throw StateError('회원가입 결과에 memberId가 없습니다.');
-      createdMemberId = id;
+      final created = response.result;
+      // 201인데 result가 없으면 가입을 완료한 것으로 표시하지 않고 계약 오류로 처리한다.
+      if (created == null) throw StateError('회원가입 결과가 없습니다.');
+      createdEmail = created.email;
       submitStatus = SubmitStatus.success;
     } on DioException catch (error) {
       if (_disposed) return;

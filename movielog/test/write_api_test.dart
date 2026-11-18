@@ -10,7 +10,10 @@ import 'package:movielog/data/models/create_member_request.dart';
 import 'package:movielog/data/models/movielog_dtos.dart';
 import 'package:movielog/data/models/sign_up_models.dart';
 import 'package:movielog/data/services/movielog_api_service.dart';
+import 'package:movielog/data/services/rating_api_service.dart';
 import 'package:movielog/view_models/write_error_message.dart';
+
+import 'support.dart';
 
 /// 요청을 기록하고 정해 둔 응답을 돌려주는 Dio 어댑터. 204처럼 본문이 없는 응답도 만들 수 있다.
 class _Adapter implements HttpClientAdapter {
@@ -206,79 +209,162 @@ void main() {
       });
       expect(response.result!.memberId, 11);
     });
+  });
+
+  group('RatingApiService(토큰 기반, memberId 없음)', () {
+    late _Adapter adapter;
+    late FakeTokenStorage storage;
+    late RatingApiService service;
+
+    void useAdapter((int, Object?) Function(RequestOptions options) respond) {
+      adapter = _Adapter(respond);
+      storage = FakeTokenStorage(token: 'jwt-for-ratings');
+      service = RatingApiService(
+        createAuthMovieLogApiClient(
+          storage,
+          baseUrl: 'http://localhost:3000',
+          enableLogging: false,
+        )..httpClientAdapter = adapter,
+      );
+    }
+
+    Map<String, Object?> ratingBody({
+      int ratingId = 7,
+      int score = 4,
+      String? comment = '좋다',
+    }) => {
+      'isSuccess': true,
+      'code': 'COMMON201',
+      'message': 'ok',
+      'result': {
+        'ratingId': ratingId,
+        'movieId': 550,
+        'score': score,
+        'comment': comment,
+        'createdAt': '2026-11-18T01:00:00.000Z',
+        'updatedAt': '2026-11-18T01:00:00.000Z',
+      },
+    };
 
     test(
-      'createRating: POST /members/{id}/ratings, 201만 성공이고 result 모양은 읽지 않는다',
+      'createRating: POST /ratings, 요청 body·경로 어디에도 memberId가 없고 Bearer가 붙는다',
       () async {
-        for (final result in <Object?>[
-          7,
-          null,
-          {'ratingId': 7},
-        ]) {
-          useAdapter(
-            (options) => (
-              201,
-              {
-                'isSuccess': true,
-                'code': 'COMMON201',
-                'message': 'ok',
-                'result': result,
-              },
-            ),
-          );
-          await service.createRating(
-            memberId: 11,
-            request: const CreateRatingRequest(
-              movieId: 550,
-              score: 4,
-              comment: '좋다',
-            ),
-          );
-          final request = adapter.requests.single;
-          expect(request.method, 'POST');
-          expect(request.path, '/members/11/ratings');
-          expect(request.data, {'movieId': 550, 'score': 4, 'comment': '좋다'});
-        }
+        useAdapter((options) => (201, ratingBody()));
+        final rating = await service.createRating(
+          const CreateRatingRequest(movieId: 550, score: 4, comment: '좋다'),
+        );
+
+        final request = adapter.requests.single;
+        expect(request.method, 'POST');
+        expect(request.path, '/ratings');
+        expect(request.data, {'movieId': 550, 'score': 4, 'comment': '좋다'});
+        expect(request.headers['Authorization'], 'Bearer jwt-for-ratings');
+        expect(request.data.toString(), isNot(contains('memberId')));
+        expect(request.path, isNot(contains('members')));
+        expect(rating.ratingId, 7);
+        expect(rating.score, 4);
       },
     );
 
-    test('createRating: 201이 아닌 성공 응답은 계약 위반(StateError)', () async {
-      useAdapter((options) => (200, {'isSuccess': true}));
-      await expectLater(
-        service.createRating(
-          memberId: 11,
-          request: const CreateRatingRequest(movieId: 550, score: 4),
-        ),
-        throwsStateError,
-      );
-    });
+    test(
+      'createRating: 201이 아닌 성공 응답과 result 없는 201은 계약 위반(StateError)',
+      () async {
+        useAdapter((options) => (200, ratingBody()));
+        await expectLater(
+          service.createRating(
+            const CreateRatingRequest(movieId: 550, score: 4),
+          ),
+          throwsStateError,
+        );
 
-    test('updateRating: PATCH에 score와 comment를 항상 실어 보낸다', () async {
-      useAdapter((options) => (200, {'isSuccess': true, 'result': null}));
-      await service.updateRating(
-        memberId: 11,
+        useAdapter(
+          (options) => (
+            201,
+            {
+              'isSuccess': true,
+              'code': 'COMMON201',
+              'message': 'ok',
+              'result': null,
+            },
+          ),
+        );
+        await expectLater(
+          service.createRating(
+            const CreateRatingRequest(movieId: 550, score: 4),
+          ),
+          throwsStateError,
+        );
+      },
+    );
+
+    test('updateRating: PATCH /ratings/{id}에 score와 comment를 항상 실어 보내고 수정된 평점을 돌려준다', () async {
+      useAdapter(
+        (options) => (200, ratingBody(ratingId: 5, score: 2, comment: null)),
+      );
+      final rating = await service.updateRating(
         ratingId: 5,
         request: const UpdateRatingRequest(score: 2),
       );
       final request = adapter.requests.single;
       expect(request.method, 'PATCH');
-      expect(request.path, '/members/11/ratings/5');
+      expect(request.path, '/ratings/5');
       expect(request.data, {'score': 2, 'comment': null});
+      expect(request.headers['Authorization'], 'Bearer jwt-for-ratings');
+      expect(rating.ratingId, 5);
+      expect(rating.score, 2);
+      expect(rating.comment, isNull);
     });
 
-    test('deleteRating: 204는 body가 없으므로 JSON으로 파싱하지 않는다', () async {
+    test(
+      'deleteRating: DELETE /ratings/{id}는 200 + result null이 성공이다(204가 아니다)',
+      () async {
+        useAdapter(
+          (options) => (
+            200,
+            {
+              'isSuccess': true,
+              'code': 'COMMON200',
+              'message': 'ok',
+              'result': null,
+            },
+          ),
+        );
+        await service.deleteRating(5);
+        final request = adapter.requests.single;
+        expect(request.method, 'DELETE');
+        expect(request.path, '/ratings/5');
+        expect(request.headers['Authorization'], 'Bearer jwt-for-ratings');
+      },
+    );
+
+    test('deleteRating: 200이 아닌 성공 응답(예전 204)은 StateError다', () async {
       useAdapter((options) => (204, null));
-      await service.deleteRating(memberId: 11, ratingId: 5);
-      final request = adapter.requests.single;
-      expect(request.method, 'DELETE');
-      expect(request.path, '/members/11/ratings/5');
+      await expectLater(service.deleteRating(5), throwsStateError);
     });
 
-    test('deleteRating: 204가 아니면 StateError', () async {
-      useAdapter((options) => (200, {'isSuccess': true}));
+    test('토큰이 저장돼 있지 않으면 Authorization 없이 나가 서버가 401로 답하게 둔다', () async {
+      useAdapter((options) => (201, ratingBody()));
+      storage.token = null;
+      await service.createRating(
+        const CreateRatingRequest(movieId: 550, score: 4),
+      );
+      expect(
+        adapter.requests.single.headers.containsKey('Authorization'),
+        isFalse,
+      );
+    });
+
+    test('서버의 401 응답은 DioException으로 그대로 올라온다(AUTH401_3)', () async {
+      useAdapter((options) => (401, failureBody('AUTH401_3', '토큰이 만료되었습니다.')));
       await expectLater(
-        service.deleteRating(memberId: 11, ratingId: 5),
-        throwsStateError,
+        service.deleteRating(5),
+        throwsA(
+          isA<DioException>().having(
+            (e) => e.response?.statusCode,
+            'status',
+            401,
+          ),
+        ),
       );
     });
   });
@@ -313,26 +399,14 @@ void main() {
       );
     });
 
-    test('code 문자열이 바뀌어도(COMMON403 → RATING403_1) 같은 문구와 같은 동작이다', () {
+    test('code 문자열이 바뀌어도(COMMON403 → RATING403_1) 같은 문구다', () {
       for (final code in ['COMMON403', 'RATING403_1', 'RATING4031']) {
         final error = responseError(
           403,
           failureBody(code, '본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.'),
         );
         expect(writeErrorMessage(error), '본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.');
-        expect(shouldRefreshAfterRatingError(error), isTrue);
       }
-    });
-
-    test('403·404만 목록을 다시 조회하고 400·409·500은 다시 조회하지 않는다', () {
-      bool refresh(int status) => shouldRefreshAfterRatingError(
-        responseError(status, failureBody('X', '문구')),
-      );
-      expect(refresh(403), isTrue);
-      expect(refresh(404), isTrue);
-      expect(refresh(400), isFalse);
-      expect(refresh(409), isFalse);
-      expect(refresh(500), isFalse);
     });
 
     test('공통 틀이 아닌 본문(NestJS 기본 오류·HTML)은 null로 읽고 기본 문구를 쓴다', () {

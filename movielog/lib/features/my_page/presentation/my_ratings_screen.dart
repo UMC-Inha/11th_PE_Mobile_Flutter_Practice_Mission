@@ -11,12 +11,9 @@ import 'package:movielog/widgets/movielog_button.dart';
 import 'package:movielog/widgets/tmdb_poster_image.dart';
 import 'package:provider/provider.dart';
 
-const myRatingsRetryKey = Key('myRatingsRetry');
-const myRatingsLoadingKey = Key('myRatingsLoading');
 const myRatingsEmptyKey = Key('myRatingsEmpty');
-const myRatingsErrorKey = Key('myRatingsError');
 const myRatingsNoticeKey = Key('myRatingsNotice');
-const myRatingsRefreshWarningKey = Key('myRatingsRefreshWarning');
+const myRatingsSessionNoticeKey = Key('myRatingsSessionNotice');
 const myRatingsPopScopeKey = Key('myRatingsPopScope');
 const myRatingsEditToggleKey = Key('myRatingsEditToggle');
 const myRatingsDeletingOverlayKey = Key('myRatingsDeletingOverlay');
@@ -25,7 +22,8 @@ const deleteSelectedButtonKey = Key('deleteSelectedButton');
 /// 마이페이지 → "내가 등록한 평점". 마이페이지 위에 열리는 자식 화면이라
 /// 하단 NavigationBar 없이 AppBar의 BackButton으로 돌아간다.
 ///
-/// 조회 대상은 회원가입 결과로 보관한 학습용 memberId의 평점이다(로그인 인증이 아니다).
+/// **이번 로그인에서 등록한 평점만** 보인다. 서버에 토큰으로 내 평점 목록을 읽는 API가 없고
+/// 로그인·내 정보 응답에 memberId도 없어서, 앱을 다시 켜면 목록이 비어 있다(화면에도 안내한다).
 /// 카드마다 수정·삭제 버튼이 있고, 상단 "편집"으로 체크박스 다중 선택 삭제 모드에 들어간다.
 class MyRatingsScreen extends StatelessWidget {
   const MyRatingsScreen({super.key});
@@ -36,7 +34,7 @@ class MyRatingsScreen extends StatelessWidget {
     final saved = await showMovieRatingDialog(
       context,
       title: '평점 수정하기',
-      movieTitle: entry.movie?.title ?? '영화 ${rating.movieId}',
+      movieTitle: entry.movie?.title ?? '영화 #${rating.movieId}',
       // 기존 값을 Dialog 초기값으로 넣는다. comment가 null이면 코멘트 칸은 빈 채로 열린다.
       initialScore: rating.score,
       initialComment: rating.comment,
@@ -103,7 +101,7 @@ class MyRatingsScreen extends StatelessWidget {
           ),
           actions: [
             // 평점이 있을 때만 편집할 수 있다.
-            if (viewModel.status == MyRatingsLoadStatus.success)
+            if (!viewModel.isEmpty)
               TextButton(
                 key: myRatingsEditToggleKey,
                 onPressed: viewModel.isDeletingSelected
@@ -131,19 +129,15 @@ class MyRatingsScreen extends StatelessWidget {
         body: LoadingOverlay(
           key: myRatingsDeletingOverlayKey,
           isLoading: viewModel.isDeletingSelected,
-          child: RefreshIndicator(
-            onRefresh: () => viewModel.load(),
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-              children: [
-                _SampleNotice(memberId: viewModel.memberId),
-                const SizedBox(height: 16),
-                _StatsRow(viewModel: viewModel),
-                const SizedBox(height: 20),
-                ..._body(context, viewModel),
-              ],
-            ),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            children: [
+              const _SessionNotice(),
+              const SizedBox(height: 16),
+              _StatsRow(viewModel: viewModel),
+              const SizedBox(height: 20),
+              ..._body(context, viewModel),
+            ],
           ),
         ),
       ),
@@ -151,113 +145,68 @@ class MyRatingsScreen extends StatelessWidget {
   }
 
   List<Widget> _body(BuildContext context, MyRatingsViewModel viewModel) {
-    switch (viewModel.status) {
-      case MyRatingsLoadStatus.idle:
-      case MyRatingsLoadStatus.loading:
-        return const [
-          Padding(
-            padding: EdgeInsets.all(32),
-            child: Center(
-              child: CircularProgressIndicator(key: myRatingsLoadingKey),
-            ),
-          ),
-        ];
-      case MyRatingsLoadStatus.error:
-        return [
-          Column(
-            key: myRatingsErrorKey,
-            children: [
-              const SizedBox(height: 16),
-              const Icon(Icons.cloud_off_outlined, color: AppColors.mutedText),
-              const SizedBox(height: 8),
-              // 저장은 끝났는데 목록 조회만 실패한 경우, 그 사실을 먼저 알려
-              // 같은 쓰기를 다시 보내는 일(409 등)을 막는다. 재시도는 GET만 다시 보낸다.
-              Text(
-                viewModel.refreshWarning ??
-                    viewModel.message ??
-                    '평점을 불러오지 못했어요.',
-                key: viewModel.refreshWarning == null
-                    ? null
-                    : myRatingsRefreshWarningKey,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.mutedText),
-              ),
-              const SizedBox(height: 12),
-              MovieLogButton(
-                key: myRatingsRetryKey,
-                label: '다시 시도',
-                onPressed: () => viewModel.load(),
-              ),
-            ],
-          ),
-        ];
-      case MyRatingsLoadStatus.empty:
-        return const [
-          Padding(
-            key: myRatingsEmptyKey,
-            padding: EdgeInsets.all(32),
-            child: Center(child: Text('아직 남긴 평점이 없어요.')),
-          ),
-        ];
-      case MyRatingsLoadStatus.success:
-        return [
-          if (viewModel.message != null)
-            Padding(
-              key: myRatingsNoticeKey,
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                viewModel.message!,
-                style: const TextStyle(
-                  color: AppColors.mutedText,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          for (final entry in viewModel.ratings)
-            _RatingTile(
-              entry: entry,
-              isEditing: viewModel.isEditing,
-              isSelected: viewModel.selectedRatingIds.contains(
-                entry.rating.ratingId,
-              ),
-              onTap: viewModel.isEditing
-                  // 편집 중에는 카드를 눌러도 선택만 바뀐다. 상세로 이동하지 않는다.
-                  ? () => viewModel.toggleSelection(entry.rating.ratingId)
-                  : () => context.push(
-                      AppRoutes.movieDetail(entry.rating.movieId),
-                      extra: entry.movie,
-                    ),
-              onEdit: () => _onEdit(context, entry),
-              onDelete: () => _onDelete(context, entry),
-            ),
-        ];
+    if (viewModel.isEmpty) {
+      return const [
+        Padding(
+          key: myRatingsEmptyKey,
+          padding: EdgeInsets.all(32),
+          child: Center(child: Text('이번 로그인에서 등록한 평점이 없어요.')),
+        ),
+      ];
     }
+    return [
+      if (viewModel.message != null)
+        Padding(
+          key: myRatingsNoticeKey,
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            viewModel.message!,
+            style: const TextStyle(color: AppColors.mutedText, fontSize: 13),
+          ),
+        ),
+      for (final entry in viewModel.ratings)
+        _RatingTile(
+          entry: entry,
+          isEditing: viewModel.isEditing,
+          isSelected: viewModel.selectedRatingIds.contains(
+            entry.rating.ratingId,
+          ),
+          onTap: viewModel.isEditing
+              // 편집 중에는 카드를 눌러도 선택만 바뀐다. 상세로 이동하지 않는다.
+              ? () => viewModel.toggleSelection(entry.rating.ratingId)
+              : () => context.push(
+                  AppRoutes.movieDetail(entry.rating.movieId),
+                  extra: entry.movie,
+                ),
+          onEdit: () => _onEdit(context, entry),
+          onDelete: () => _onDelete(context, entry),
+        ),
+    ];
   }
 }
 
-/// 로그인(인증)이 아직 없어서, 회원가입으로 받은 memberId로 조회한 평점임을 알린다.
-class _SampleNotice extends StatelessWidget {
-  const _SampleNotice({required this.memberId});
-
-  final int memberId;
+/// 목록의 범위를 숨기지 않고 알린다: 이번 로그인에서 등록한 평점만 보인다.
+class _SessionNotice extends StatelessWidget {
+  const _SessionNotice();
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
+      key: myRatingsSessionNoticeKey,
       decoration: BoxDecoration(
         color: const Color(0xFFF1EDFA),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
+      child: const Padding(
+        padding: EdgeInsets.all(12),
         child: Row(
           children: [
-            const Icon(Icons.info_outline, size: 18, color: AppColors.primary),
-            const SizedBox(width: 8),
+            Icon(Icons.info_outline, size: 18, color: AppColors.primary),
+            SizedBox(width: 8),
             Expanded(
               child: Text(
-                '로그인 전이라 방금 가입한 학습용 회원 #$memberId의 평점을 보여줘요.',
-                style: const TextStyle(color: AppColors.text, fontSize: 13),
+                '이번 로그인에서 등록한 평점만 보여요. 서버에 내 평점 조회 API가 없어 앱을 다시 켜면 목록이 비어요.',
+                style: TextStyle(color: AppColors.text, fontSize: 13),
               ),
             ),
           ],
@@ -274,18 +223,12 @@ class _StatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final loaded =
-        viewModel.status == MyRatingsLoadStatus.success ||
-        viewModel.status == MyRatingsLoadStatus.empty;
     // 조회에 실패한 상태에서는 남아 있는 이전 목록의 평균을 보여 주지 않는다("남긴 평점"이 -인데
     // 평균만 낡은 값을 보여 주면 서로 어긋난다).
-    final average = loaded ? viewModel.averageScore : null;
+    final average = viewModel.averageScore;
     return Row(
       children: [
-        _StatItem(
-          label: '남긴 평점',
-          value: loaded ? '${viewModel.ratings.length}' : '-',
-        ),
+        _StatItem(label: '남긴 평점', value: '${viewModel.ratings.length}'),
         const SizedBox(width: 12),
         _StatItem(
           label: '평균 점수',
@@ -384,7 +327,7 @@ class _RatingTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    movie?.title ?? '영화 정보 없음',
+                    movie?.title ?? '영화 #${rating.movieId}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
