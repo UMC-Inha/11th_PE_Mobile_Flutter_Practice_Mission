@@ -1,0 +1,36 @@
+# 8주차 FE — 로그에 토큰·비밀번호·Authorization 값이 남았는지 확인
+
+대상: ① 브라우저 콘솔(Flutter Web **debug** 실행이라 앱의 개발용 로그 Interceptor가 켜져 있다) ② flutter run 터미널 ③ 하네스 프록시 기록 ④ NestJS 서버 출력.
+방법: 콘솔은 앱을 띄운 Chrome 탭의 콘솔을 문자열로 걸러 읽었다(대소문자 구분 부분 문자열).
+
+!! 한계: 브라우저 도구가 보관하던 콘솔 메시지는 **마지막 432건**이었다. 세션 앞부분(회원가입, 틀린 비밀번호로 로그인 등)의 콘솔 줄은 이미 밀려나 이 검사에 포함되지 않았다.
+   그 구간에 대해서는 (a) 남아 있는 로그인 요청 줄이 헤더만 찍고 body를 찍지 않는 것, (b) 단위 테스트(키 기반 가림 · JWT 모양 가림)로 보완했고, 콘솔 전체를 검사했다고는 말하지 않는다.
+
+## 1. 브라우저 콘솔 (남아 있던 432건)
+
+| 찾은 문자열 | 일치한 줄 |
+| --- | ---: |
+| `eyJ` (JWT 머리말) | 0 |
+| `Pw-` (이번 실험의 테스트 비밀번호 접두사) | 0 |
+| `Wrong-` (일부러 틀린 비밀번호 접두사) | 0 |
+| `assword` (password/Password) | 0 |
+| `Authorization` | 48 |
+
+- `Authorization` 48줄 중 47줄은 `Authorization: Bearer ***` 모양이다. TMDB 요청 줄과 MovieLog 보호 요청 줄 모두 값이 `***`로 가려져 있다.
+- 나머지 1줄은 Dio의 CORS 오류 설명문("… the request header "Authorization" is not on the CORS safelist …")으로 헤더 **이름**만 나오고 값은 없다.
+- 로그인 응답 줄은 `{… result: {nickname: …, accessToken: ***}}`로 토큰이 가려져 나온다.
+- 로그인 요청(POST /auth/login) 줄은 `[MovieLog API 요청 Header] {accept: application/json, content-type: application/json}`만 있고 요청 body(이메일·비밀번호)를 찍는 줄이 없다.
+- 보호 요청 줄: `[MovieLog API 요청 Header] {accept: application/json, Authorization: Bearer ***}` (이 줄은 AuthInterceptor가 토큰을 붙인 **뒤** 로그 Interceptor가 가려서 찍은 것).
+- 오류 줄에는 서버가 준 오류 body가 나온다(예: `{isSuccess: false, code: AUTH401_3, message: 유효하지 않은 토큰입니다., result: null}`, `AUTH401_4`, `RATING409_1`). 서버 오류 body에는 토큰이 없다.
+- 내 정보 응답 body에는 `email · nickname · createdAt`이 그대로 보인다(실험용 계정이라 문제 없지만, 실서비스 로그라면 개인정보 노출이다. 이 로그는 debug 빌드에서만 켜진다: release에서는 Interceptor를 붙이지 않는다).
+
+## 2. flutter run 터미널 / 하네스 기록 / NestJS 서버 출력
+
+| 파일 | 줄 수 | `eyJ` | `Pw-` | `Wrong-` |
+| --- | ---: | ---: | ---: | ---: |
+| flutter run 출력 | 16 | 0 | 0 | 0 |
+| NestJS 서버 출력 | 29 | 0 | 0 | 0 |
+| 하네스 시작 로그 | 4 | 0 | 0 | 0 |
+| 프록시 요청 기록(requests) | 154 | 0 | 0 | 0 |
+
+(flutter run은 `-d web-server`라서 브라우저 콘솔을 터미널로 옮겨 주지 않는다. 그래서 앱 로그는 위 1번 콘솔에서만 본다.)
