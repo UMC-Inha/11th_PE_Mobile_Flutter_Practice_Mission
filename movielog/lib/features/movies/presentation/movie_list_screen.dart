@@ -18,9 +18,11 @@ const movieSearchButtonKey = Key('movieSearchButton');
 const allGenreChipKey = Key('genreChip-all');
 
 /// 영화 목록 View. 상태를 직접 만들지 않고 MovieListViewModel을 그대로 그린다.
-/// 남은 화면 상태는 격자/리스트 보기 전환 하나뿐이다.
+/// 남은 화면 상태는 격자/리스트 보기 전환과 스크롤 위치(무한 스크롤)뿐이다.
 ///
-/// 첫 page만 보여 주고, 맨 아래 footer의 "더 보기"로 다음 page를 이어 붙인다.
+/// 첫 page를 보여 주고, 스크롤이 끝에 가까워지면([loadMoreThreshold] 이하) 다음 page를 이어 붙인다.
+/// 중복 요청은 ViewModel이 막고, 다음 page 조회가 실패하면 footer의 "다시 시도" 버튼이 남아
+/// 같은 요청이 자동으로 반복되지 않는다.
 class MovieListScreen extends StatefulWidget {
   const MovieListScreen({super.key});
 
@@ -29,7 +31,52 @@ class MovieListScreen extends StatefulWidget {
 }
 
 class _MovieListScreenState extends State<MovieListScreen> {
+  /// 남은 스크롤 길이가 이 값(논리 픽셀) 이하이면 다음 page를 요청한다.
+  static const loadMoreThreshold = 300.0;
+
   bool _isGrid = true;
+
+  // 격자와 리스트가 번갈아 쓰는 하나의 컨트롤러. 화면이 사라질 때 리스너를 떼고 dispose한다.
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  /// 스크롤이 끝에 가까우면 다음 page를 요청한다. 격자↔리스트가 바뀌는 프레임에는 위치가 둘일 수
+  /// 있어 하나일 때만 읽는다.
+  void _onScroll() {
+    if (!mounted || !_scrollController.hasClients) return;
+    final positions = _scrollController.positions;
+    if (positions.length != 1) return;
+    if (positions.first.extentAfter > loadMoreThreshold) return;
+    _loadNextPageIfIdle();
+  }
+
+  /// 자동 요청 조건. 요청 중이거나 더 받을 page가 없으면 아무것도 하지 않고(ViewModel도 막는다),
+  /// 직전 요청이 실패했다면 자동으로 반복하지 않는다(사용자가 footer의 "다시 시도"를 누른다).
+  void _loadNextPageIfIdle() {
+    final paged = context.read<MovieListViewModel>().paged;
+    if (paged.loadMoreError != null || paged.isLoadingMore || !paged.hasMore) {
+      return;
+    }
+    paged.loadNextPage();
+  }
+
+  /// 한 page가 화면을 다 채우지 못해 스크롤할 수 없는 경우를 위해, 그릴 때마다 끝에 가까운지 다시 본다.
+  void _checkAfterBuild() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onScroll());
+  }
 
   Future<void> _openFilter(MovieListViewModel viewModel) async {
     final result = await showGenreFilterSheet(
@@ -140,16 +187,20 @@ class _MovieListScreenState extends State<MovieListScreen> {
 
   Widget _movies(MovieListViewModel viewModel) {
     final movies = viewModel.visibleMovies;
-    final footer = MoviePageFooter(viewModel: viewModel.paged);
+    // 무한 스크롤: "더 보기" 버튼 없이 로딩·오류("다시 시도")·끝 안내만 보여 준다.
+    final footer = MoviePageFooter(viewModel: viewModel.paged, autoLoad: true);
+    _checkAfterBuild();
     if (_isGrid) {
       return MovieGrid(
         movies: movies,
         onTap: _openDetail,
         genreNameOf: viewModel.primaryGenreName,
+        controller: _scrollController,
         footer: footer,
       );
     }
     return ListView.separated(
+      controller: _scrollController,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       itemCount: movies.length + 1,

@@ -51,55 +51,58 @@ void main() {
     matching: find.byType(Scrollable),
   );
 
-  Future<void> scrollToFooter(WidgetTester tester, Finder target) async {
-    await tester.scrollUntilVisible(
-      target,
-      500,
-      scrollable: gridScrollable(),
-    );
-    await tester.pump();
-  }
+  group('영화 목록: 무한 스크롤과 footer (Challenge B)', () {
+    ScrollPosition gridPosition(WidgetTester tester) =>
+        tester.state<ScrollableState>(gridScrollable()).position;
 
-  group('영화 목록: 첫 page와 더 보기 footer', () {
-    testWidgets('첫 page 20편만 받고(Discover를 한 번만 호출) 맨 아래에 "더 보기" 버튼이 있다', (tester) async {
+    /// 끝까지 내린다. 스크롤 위치가 바뀌는 동안 리스너가 다음 page를 요청한다.
+    Future<void> scrollToEnd(WidgetTester tester) async {
+      await tester.drag(gridScrollable(), const Offset(0, -9000));
+      await tester.pump();
+    }
+
+    testWidgets('첫 page 20편만 받고 "더 보기" 버튼은 없다(스크롤하기 전에는 page 2를 요청하지 않는다)', (tester) async {
       tmdb.totalPages = 3;
       await openMovies(tester);
       expect(tmdb.discoverCalls.map((c) => c.page), [1]);
       expect(find.text('전체 · 20편'), findsOneWidget);
-      await scrollToFooter(tester, find.byKey(loadMoreButtonKey));
-      expect(find.byKey(loadMoreButtonKey), findsOneWidget);
-      expect(find.text('더 보기'), findsOneWidget);
-      expect(find.byKey(moviePageEndKey), findsNothing);
+      expect(find.byKey(loadMoreButtonKey), findsNothing);
+      await tester.pump(const Duration(seconds: 2));
+      expect(tmdb.discoverCalls, hasLength(1));
     });
 
-    testWidgets('더 보기를 누르면 다음 page가 이어 붙고 목록은 그대로 남는다', (tester) async {
+    testWidgets('스크롤이 끝에서 300 이하로 가까워지면 다음 page를 자동으로 이어 붙인다', (tester) async {
       tmdb.totalPages = 3;
       await openMovies(tester);
-      await scrollToFooter(tester, find.byKey(loadMoreButtonKey));
-      await tester.tap(find.byKey(loadMoreButtonKey));
-      await settle(tester);
+      final position = gridPosition(tester);
+      expect(position.maxScrollExtent, greaterThan(1000));
+
+      position.jumpTo(position.maxScrollExtent - 400); // 아직 멀다
+      await tester.pump();
+      expect(tmdb.discoverCalls.map((c) => c.page), [1], reason: '남은 길이 400 > 임계값');
+
+      position.jumpTo(position.maxScrollExtent - 250); // 임계값 이하
+      await tester.pump();
       expect(tmdb.discoverCalls.map((c) => c.page), [1, 2]);
+      await settle(tester);
       expect(find.text('전체 · 40편'), findsOneWidget);
-      // 첫 page의 영화(id 1)도 그대로 있다.
-      await tester.drag(gridScrollable(), const Offset(0, 6000));
-      await tester.pump();
-      expect(find.byKey(const Key('movieCard-1')), findsOneWidget);
     });
 
-    testWidgets('다음 page를 받는 중에는 "더 보기" 버튼이 로딩으로 바뀌어 눌리지 않고 요청은 한 번이다', (tester) async {
+    testWidgets('다음 page를 받는 중에는 footer에 로딩이 보이고, 계속 스크롤해도 요청은 한 번이다', (tester) async {
       tmdb.totalPages = 3;
       await openMovies(tester);
-      await scrollToFooter(tester, find.byKey(loadMoreButtonKey));
       tmdb.gate = Completer<void>();
-      await tester.tap(find.byKey(loadMoreButtonKey));
-      await tester.pump();
+      await scrollToEnd(tester);
       await tester.pump(const Duration(milliseconds: 100));
-      final button = tester.widget<MovieLogButton>(find.byKey(loadMoreButtonKey));
-      expect(button.isLoading, isTrue);
-      // 기존 목록은 그대로 보인다.
-      expect(find.text('전체 · 20편'), findsOneWidget);
-      await tester.tap(find.byKey(loadMoreButtonKey), warnIfMissed: false);
-      await tester.pump();
+      expect(find.byKey(loadMoreIndicatorKey), findsOneWidget);
+      expect(find.byKey(loadMoreButtonKey), findsNothing);
+      // 요청 중에 위아래로 더 흔들어도 같은 page를 또 요청하지 않는다.
+      for (var i = 0; i < 3; i++) {
+        await tester.drag(gridScrollable(), const Offset(0, 300));
+        await tester.pump();
+        await tester.drag(gridScrollable(), const Offset(0, -9000));
+        await tester.pump();
+      }
       expect(tmdb.discoverCalls.map((c) => c.page), [1, 2]);
 
       tmdb.gate!.complete();
@@ -107,58 +110,119 @@ void main() {
       expect(find.text('전체 · 40편'), findsOneWidget);
     });
 
-    testWidgets('다음 page 조회가 실패하면 목록을 지우지 않고 오류와 "다시 시도"가 보이며, 같은 page를 다시 요청한다', (
+    testWidgets('다음 page 조회가 실패하면 목록은 그대로이고 "다시 시도"가 남으며, 같은 요청을 자동으로 반복하지 않는다', (
       tester,
     ) async {
       tmdb.totalPages = 3;
       await openMovies(tester);
-      await scrollToFooter(tester, find.byKey(loadMoreButtonKey));
       tmdb.failDiscover = true;
-      await tester.tap(find.byKey(loadMoreButtonKey));
+      await scrollToEnd(tester);
       await settle(tester);
-      await scrollToFooter(tester, find.byKey(loadMoreRetryKey));
+      expect(tmdb.discoverCalls.map((c) => c.page), [1, 2]);
       expect(find.byKey(loadMoreErrorKey), findsOneWidget);
       expect(find.byKey(loadMoreRetryKey), findsOneWidget);
-      expect(find.byKey(loadMoreButtonKey), findsNothing);
       expect(find.text('전체 · 20편'), findsOneWidget, reason: '기존 목록은 그대로');
+
+      // 오류 상태에서 계속 스크롤하거나 시간이 지나도 자동으로 다시 요청하지 않는다.
+      for (var i = 0; i < 3; i++) {
+        await tester.drag(gridScrollable(), const Offset(0, 300));
+        await tester.pump();
+        await tester.drag(gridScrollable(), const Offset(0, -9000));
+        await tester.pump(const Duration(seconds: 1));
+      }
+      expect(tmdb.discoverCalls.map((c) => c.page), [1, 2], reason: '자동 반복 금지');
 
       tmdb.failDiscover = false;
       await tester.tap(find.byKey(loadMoreRetryKey));
       await settle(tester);
-      expect(tmdb.discoverCalls.map((c) => c.page), [1, 2, 2], reason: '같은 page 재시도');
+      expect(tmdb.discoverCalls.map((c) => c.page), [1, 2, 2], reason: '같은 page를 사용자가 다시 시도');
       expect(find.text('전체 · 40편'), findsOneWidget);
       expect(find.byKey(loadMoreErrorKey), findsNothing);
     });
 
-    testWidgets('마지막 page를 받으면 더 보기 버튼 대신 끝 안내가 보인다', (tester) async {
+    testWidgets('마지막 page까지 받으면 끝 안내가 보이고 더 스크롤해도 요청하지 않는다', (tester) async {
       tmdb.totalPages = 2;
       await openMovies(tester);
-      await scrollToFooter(tester, find.byKey(loadMoreButtonKey));
-      await tester.tap(find.byKey(loadMoreButtonKey));
+      await scrollToEnd(tester);
       await settle(tester);
-      await scrollToFooter(tester, find.byKey(moviePageEndKey));
+      expect(find.text('전체 · 40편'), findsOneWidget);
+      await scrollToEnd(tester);
+      await settle(tester);
       expect(find.byKey(moviePageEndKey), findsOneWidget);
       expect(find.byKey(loadMoreButtonKey), findsNothing);
+      expect(tmdb.discoverCalls.map((c) => c.page), [1, 2]);
+    });
+
+    testWidgets('page가 하나뿐이면 처음부터 끝 안내만 보이고 더 요청하지 않는다', (tester) async {
+      tmdb.totalPages = 1;
+      await openMovies(tester);
+      await scrollToEnd(tester);
+      await settle(tester);
+      expect(find.byKey(moviePageEndKey), findsOneWidget);
+      expect(tmdb.discoverCalls.map((c) => c.page), [1]);
+    });
+
+    testWidgets('한 page가 화면을 채우지 못하면 스크롤하지 않아도 화면이 찰 때까지 다음 page를 이어 받는다', (tester) async {
+      tmdb
+        ..perPage = 3
+        ..totalPages = 5;
+      await openMovies(tester);
+      await settle(tester);
+      await settle(tester);
+      final pages = tmdb.discoverCalls.map((c) => c.page).toList();
+      expect(pages.length, greaterThan(1), reason: '사용자가 스크롤하지 않았는데도 page 2 이상을 받았다');
+      expect(pages, [for (var i = 1; i <= pages.length; i++) i]);
+      // 화면이 찼으면(남은 스크롤 > 임계값) 거기서 멈추고, 아직 page가 남아 있다.
+      expect(gridPosition(tester).extentAfter, greaterThan(300));
+      expect(pages.length, lessThan(5));
+    });
+
+    testWidgets('리스트 보기로 바꿔도 같은 방식으로 이어 받는다', (tester) async {
+      tmdb.totalPages = 3;
+      await openMovies(tester);
+      await tester.tap(find.byKey(viewModeButtonKey));
+      await settle(tester);
+      expect(find.byType(MovieGrid), findsNothing);
+      final listScrollable = find
+          .descendant(
+            of: find.byKey(const Key('movieRefresh')),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      final position = tester.state<ScrollableState>(listScrollable).position;
+      position.jumpTo(position.maxScrollExtent - 400);
+      await tester.pump();
+      expect(tmdb.discoverCalls.map((c) => c.page), [1], reason: '아직 멀다');
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pump();
+      expect(tmdb.discoverCalls.map((c) => c.page), [1, 2]);
+      await settle(tester);
       expect(find.text('전체 · 40편'), findsOneWidget);
     });
 
-    testWidgets('page가 하나뿐이면 처음부터 끝 안내만 보인다', (tester) async {
-      tmdb.totalPages = 1;
+    testWidgets('화면이 사라진 뒤에는 컨트롤러 리스너가 없어 오류 없이 정리된다(로그아웃)', (tester) async {
+      tmdb.totalPages = 3;
       await openMovies(tester);
-      await scrollToFooter(tester, find.byKey(moviePageEndKey));
-      expect(find.byKey(moviePageEndKey), findsOneWidget);
-      expect(find.byKey(loadMoreButtonKey), findsNothing);
+      tmdb.gate = Completer<void>();
+      await scrollToEnd(tester);
+      await tester.pump(const Duration(milliseconds: 100));
+      unawaited(authOf(tester).logout());
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      tmdb.gate!.complete();
+      await settle(tester);
+      expect(find.byType(MovieListScreen), findsNothing);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('장르를 바꾸면 목록·page를 모두 비우고 page 1부터 다시 받는다', (tester) async {
       tmdb.totalPages = 3;
       await openMovies(tester);
-      await scrollToFooter(tester, find.byKey(loadMoreButtonKey));
-      await tester.tap(find.byKey(loadMoreButtonKey));
+      await scrollToEnd(tester);
       await settle(tester);
       expect(find.text('전체 · 40편'), findsOneWidget);
 
-      await tester.drag(gridScrollable(), const Offset(0, 6000));
+      await tester.drag(gridScrollable(), const Offset(0, 9000));
       await tester.pump();
       await tester.tap(find.byKey(const Key('genreChip-18')));
       await settle(tester);
@@ -446,6 +510,80 @@ void main() {
         [(1, '매트릭스'), (2, '매트릭스')],
       );
       expect(find.textContaining('매트릭스 결과 21'), findsWidgets);
+    });
+
+    group('검색 결과 footer: "더 보기" 버튼의 네 가지 상태', () {
+      Finder resultsScrollable() => find
+          .descendant(
+            of: find.byKey(searchResultsKey),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+
+      Future<void> showFooter(WidgetTester tester, Finder target) async {
+        await tester.scrollUntilVisible(
+          target,
+          400,
+          scrollable: resultsScrollable(),
+        );
+        await tester.pump();
+      }
+
+      testWidgets('더 받을 page가 있으면 "더 보기" 버튼이 보이고, 받는 중에는 로딩으로 바뀌어 눌리지 않는다', (tester) async {
+        tmdb.totalPages = 3;
+        await openSearchFromList(tester);
+        await submit(tester, '매트릭스');
+        await showFooter(tester, find.byKey(loadMoreButtonKey));
+        expect(tester.widget<MovieLogButton>(find.byKey(loadMoreButtonKey)).isLoading, isFalse);
+        expect(find.text('더 보기'), findsOneWidget);
+
+        tmdb.gate = Completer<void>();
+        await tester.tap(find.byKey(loadMoreButtonKey));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(tester.widget<MovieLogButton>(find.byKey(loadMoreButtonKey)).isLoading, isTrue);
+        await tester.tap(find.byKey(loadMoreButtonKey), warnIfMissed: false);
+        await tester.pump();
+        expect(tmdb.searchCalls.map((c) => c.page), [1, 2], reason: '요청은 한 번');
+
+        tmdb.gate!.complete();
+        await settle(tester);
+        await showFooter(tester, find.byKey(loadMoreButtonKey)); // 이어 붙은 결과 맨 아래
+        expect(tester.widget<MovieLogButton>(find.byKey(loadMoreButtonKey)).isLoading, isFalse);
+        expect(find.textContaining('매트릭스 결과 40'), findsOneWidget, reason: '2 page까지 이어 붙은 마지막 항목');
+      });
+
+      testWidgets('다음 page가 실패하면 결과는 그대로이고 오류와 같은 page 재시도 버튼이 보인다', (tester) async {
+        tmdb.totalPages = 3;
+        await openSearchFromList(tester);
+        await submit(tester, '매트릭스');
+        await showFooter(tester, find.byKey(loadMoreButtonKey));
+        tmdb.failSearch = true;
+        await tester.tap(find.byKey(loadMoreButtonKey));
+        await settle(tester);
+        await showFooter(tester, find.byKey(loadMoreRetryKey));
+        expect(find.byKey(loadMoreErrorKey), findsOneWidget);
+        expect(find.byKey(loadMoreButtonKey), findsNothing);
+        expect(find.byKey(searchResultsKey), findsOneWidget, reason: '결과는 지우지 않는다');
+
+        tmdb.failSearch = false;
+        await tester.tap(find.byKey(loadMoreRetryKey));
+        await settle(tester);
+        expect(tmdb.searchCalls.map((c) => c.page), [1, 2, 2]);
+        expect(find.byKey(loadMoreErrorKey), findsNothing);
+      });
+
+      testWidgets('마지막 page를 받으면 끝 안내가 보이고 더 보기 버튼은 없다', (tester) async {
+        tmdb.totalPages = 2;
+        await openSearchFromList(tester);
+        await submit(tester, '매트릭스');
+        await showFooter(tester, find.byKey(loadMoreButtonKey));
+        await tester.tap(find.byKey(loadMoreButtonKey));
+        await settle(tester);
+        await showFooter(tester, find.byKey(moviePageEndKey));
+        expect(find.byKey(moviePageEndKey), findsOneWidget);
+        expect(find.byKey(loadMoreButtonKey), findsNothing);
+      });
     });
 
     testWidgets('새 검색어를 제출하면 이전 결과를 비우고 page 1부터 다시 받는다', (tester) async {
