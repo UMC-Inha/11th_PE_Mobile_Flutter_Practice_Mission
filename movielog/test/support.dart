@@ -16,11 +16,13 @@ import 'package:movielog/data/models/favorite_check_dto.dart';
 import 'package:movielog/data/models/favorite_response_dto.dart';
 import 'package:movielog/data/models/login_models.dart';
 import 'package:movielog/data/models/member_info.dart';
+import 'package:movielog/data/models/movie_record_models.dart';
 import 'package:movielog/data/models/movielog_dtos.dart';
 import 'package:movielog/data/models/sign_up_models.dart';
 import 'package:movielog/data/services/auth_api_service.dart';
 import 'package:movielog/data/services/favorite_api_service.dart';
 import 'package:movielog/data/services/member_api_service.dart';
+import 'package:movielog/data/services/movie_record_api_service.dart';
 import 'package:movielog/data/services/rating_api_service.dart';
 import 'package:movielog/data/models/tmdb_genre_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
@@ -725,6 +727,88 @@ class FakeFavoriteApiService implements FavoriteApiService {
   }
 }
 
+/// 평점 + 즐겨찾기 통합 저장(`POST /movie-records`) 대역. 서버 계약대로 둘을 **한 번에** 처리한다:
+/// 평점이 이미 있으면 `RATING409_1`, `addToFavorites`인데 즐겨찾기가 이미 있으면 `FAVORITE409_1`(이때 평점도
+/// 저장하지 않는다). 성공하면 [ratingApi]·[favoriteApi]가 들고 있는 서버 상태에 실제로 반영한다.
+class FakeMovieRecordApiService implements MovieRecordApiService {
+  FakeMovieRecordApiService({
+    required this.ratingApi,
+    required this.favoriteApi,
+    this.delay = const Duration(milliseconds: 100),
+  });
+
+  final FakeRatingApiService ratingApi;
+  final FakeFavoriteApiService favoriteApi;
+  Duration delay;
+
+  /// 값이 있으면 요청이 이 오류로 실패한다(지울 때까지 계속). 서버에는 아무것도 저장되지 않는다.
+  Object? failure;
+
+  /// 값이 있으면 응답을 이 Future가 끝날 때까지 붙잡는다.
+  Completer<void>? gate;
+
+  /// true면 서버에는 저장한 뒤 응답만 오지 않는다(timeout). 자동 재시도 여부를 확인할 때 쓴다.
+  bool timeoutAfterApply = false;
+
+  final requests = <CreateMovieRecordRequest>[];
+
+  @override
+  Future<MovieRecordResponseDto> createRecord(
+    CreateMovieRecordRequest request,
+  ) async {
+    requests.add(request);
+    await Future<void>.delayed(delay);
+    if (gate != null) await gate!.future;
+    final error = failure;
+    if (error != null) throw error;
+    if ((request.comment ?? '').length > 500) {
+      throw apiFailure(
+        '/movie-records',
+        400,
+        code: 'COMMON400',
+        message: '코멘트는 500자 이하로 입력해 주세요.',
+      );
+    }
+    if (ratingApi.serverRatings.values.any((r) => r.movieId == request.movieId)) {
+      throw apiFailure(
+        '/movie-records',
+        409,
+        code: 'RATING409_1',
+        message: '이미 이 영화에 평점을 남기셨습니다.',
+      );
+    }
+    if (request.addToFavorites && favoriteApi.isFavoriteOf(request.movieId)) {
+      throw apiFailure(
+        '/movie-records',
+        409,
+        code: 'FAVORITE409_1',
+        message: '이미 즐겨찾기한 영화입니다.',
+      );
+    }
+    final now = DateTime.utc(2026, 11, 22);
+    final rating = MemberRatingDto(
+      ratingId: ratingApi._nextId++,
+      movieId: request.movieId,
+      score: request.score,
+      comment: request.toJson()['comment'] as String?,
+      createdAt: now,
+      updatedAt: now,
+    );
+    ratingApi.serverRatings[rating.ratingId] = rating;
+    FavoriteResponseDto? favorite;
+    if (request.addToFavorites) {
+      favorite = FavoriteResponseDto(
+        favoriteId: favoriteApi._nextId++,
+        movieId: request.movieId,
+        createdAt: now,
+      );
+      favoriteApi.favoritesOf().insert(0, favorite);
+    }
+    if (timeoutAfterApply) throw timeoutFailure('/movie-records');
+    return MovieRecordResponseDto(rating: rating, favorite: favorite);
+  }
+}
+
 /// 공개 MovieLog API 대역(중복 확인, 회원가입, 유저별 평점 조회). 시드 데이터(수현, noco@umc.com)와 같은 답을 한다.
 class FakeMovieLogApiService implements MovieLogApiService {
   FakeMovieLogApiService({
@@ -879,6 +963,10 @@ class AppHarness {
       memberApi = FakeMemberApiService(member: member) {
     // 즐겨찾기는 계정별이다. 지금 내 정보 대역이 돌려주는 계정의 즐겨찾기를 다룬다.
     favoriteApi = FakeFavoriteApiService(accountOf: () => memberApi.member.email);
+    movieRecordApi = FakeMovieRecordApiService(
+      ratingApi: ratingApi,
+      favoriteApi: favoriteApi,
+    );
   }
 
   final FakeTmdbMovieService tmdb = FakeTmdbMovieService();
@@ -887,6 +975,7 @@ class AppHarness {
   final FakeMemberApiService memberApi;
   final FakeRatingApiService ratingApi = FakeRatingApiService();
   late final FakeFavoriteApiService favoriteApi;
+  late final FakeMovieRecordApiService movieRecordApi;
   final FakeTokenStorage storage;
   final MemoryEmailPreference emailPreference = MemoryEmailPreference();
 
@@ -904,6 +993,7 @@ class AppHarness {
     memberApiService: memberApi,
     ratingApiService: ratingApi,
     favoriteApiService: favoriteApi,
+    movieRecordApiService: movieRecordApi,
     tokenStorage: storage,
     emailPreference: emailPreference,
     preferences: MemoryMoviePreferences(),

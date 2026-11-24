@@ -246,6 +246,22 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('상세가 떠 있는 채로 계정(email)이 바뀌면 이전 계정의 북마크를 버리고 새 계정의 값을 다시 받는다', (tester) async {
+      h.favoriteApi.seed([movieId], account: 'kevin@umc.com'); // sue는 즐겨찾기하지 않았다
+      await openDetail(tester);
+      expect(filledBookmark(), findsOneWidget);
+      final checks = h.favoriteApi.checkCalls.length;
+
+      // 로그아웃 없이 내 정보를 다시 받았더니 다른 계정이었다(ValueKey가 ViewModel을 새로 만든다).
+      h.memberApi.member = testMember(email: 'sue@umc.com', nickname: '수');
+      unawaited(authOf(tester).loadMember(force: true));
+      await settle(tester);
+      await settle(tester);
+      expect(h.favoriteApi.checkCalls.length, greaterThan(checks), reason: '새 계정으로 다시 조회');
+      expect(emptyBookmark(), findsOneWidget);
+      expect(filledBookmark(), findsNothing, reason: '이전 계정(kevin)의 북마크가 남지 않는다');
+    });
+
     testWidgets('로그아웃한 뒤 같은 영화 상세를 다른 계정으로 열면 이전 계정의 북마크가 남지 않는다', (tester) async {
       // 계정 A(kevin)는 이 영화를 즐겨찾기했고, 계정 B(sue)는 하지 않았다.
       h.favoriteApi.seed([movieId], account: 'kevin@umc.com');

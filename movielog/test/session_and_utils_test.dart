@@ -118,6 +118,15 @@ void main() {
       expect(bridge.guard.isCurrent(old, 'a@umc.com'), isFalse);
     });
 
+    test('email이 그대로여도(중간에 비는 알림 없이) sessionVersion만 바뀌면 새 세션이다', () {
+      signals.change(version: 1, email: 'a@umc.com');
+      final old = bridge.guard.generation;
+      signals.change(version: 2); // 같은 이메일, 번호만 올라감
+      expect(bridge.guard.accountId, 'a@umc.com');
+      expect(bridge.guard.generation, greaterThan(old));
+      expect(bridge.guard.isCurrent(old, 'a@umc.com'), isFalse);
+    });
+
     test('로그아웃이면 계정을 비우고 이전 세션을 무효로 한다', () {
       signals.change(version: 1, email: 'a@umc.com');
       final gen = bridge.guard.generation;

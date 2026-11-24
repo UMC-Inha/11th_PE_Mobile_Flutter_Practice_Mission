@@ -4,6 +4,7 @@ import 'package:movielog/core/storage/genre_preference.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
 import 'package:movielog/data/services/favorite_api_service.dart';
 import 'package:movielog/data/services/member_api_service.dart';
+import 'package:movielog/data/services/movie_record_api_service.dart';
 import 'package:movielog/data/services/movielog_api_service.dart';
 import 'package:movielog/data/services/rating_api_service.dart';
 import 'package:movielog/data/services/tmdb_movie_service.dart';
@@ -327,6 +328,7 @@ GoRouter createAppRouter(
                   context.read<RatingApiService>(),
                   context.read<AuthViewModel>(),
                   context.read<SessionRatings>(),
+                  movieRecordApi: context.read<MovieRecordApiService>(),
                   movieId: movieId,
                   movie: listedMovie,
                 )..loadIfNeeded(),

@@ -14,6 +14,7 @@ import 'package:movielog/core/theme/app_theme.dart';
 import 'package:movielog/data/services/auth_api_service.dart';
 import 'package:movielog/data/services/favorite_api_service.dart';
 import 'package:movielog/data/services/member_api_service.dart';
+import 'package:movielog/data/services/movie_record_api_service.dart';
 import 'package:movielog/data/services/movielog_api_service.dart';
 import 'package:movielog/data/services/rating_api_service.dart';
 import 'package:movielog/data/services/tmdb_movie_service.dart';
@@ -31,6 +32,7 @@ class MovieLogApp extends StatefulWidget {
     this.memberApiService,
     this.ratingApiService,
     this.favoriteApiService,
+    this.movieRecordApiService,
     this.tokenStorage,
     this.emailPreference,
     this.preferences,
@@ -47,6 +49,7 @@ class MovieLogApp extends StatefulWidget {
   final MemberApiService? memberApiService;
   final RatingApiService? ratingApiService;
   final FavoriteApiService? favoriteApiService;
+  final MovieRecordApiService? movieRecordApiService;
 
   /// null이면 보안 저장소(SecureTokenStorage). 테스트는 메모리 저장소를 넣는다.
   final TokenStorage? tokenStorage;
@@ -123,6 +126,10 @@ class _MovieLogAppState extends State<MovieLogApp> {
         Provider<FavoriteApiService>(
           create: (_) =>
               widget.favoriteApiService ?? FavoriteApiService(_authClient),
+        ),
+        Provider<MovieRecordApiService>(
+          create: (_) =>
+              widget.movieRecordApiService ?? MovieRecordApiService(_authClient),
         ),
         Provider<EmailPreference>(
           create: (_) => widget.emailPreference ?? SharedEmailPreference(),

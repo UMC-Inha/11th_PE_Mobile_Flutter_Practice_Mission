@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/core/session/auth_session_bridge.dart';
+import 'package:movielog/core/session/session_guard.dart';
 import 'package:movielog/view_models/auth_view_model.dart';
 import 'package:movielog/view_models/favorite_detail_view_model.dart';
 
@@ -377,6 +378,34 @@ void main() {
       await late;
       expect(auth.status, AuthStatus.signedIn);
       expect(auth.sessionExpired, isFalse);
+    });
+
+    test('SessionGuard가 새 세션을 아직 모르는 틈에도, 요청을 보낸 인증 세션이 지났다면 만료 처리하지 않는다(forVersion)', () async {
+      // 인증 상태와 연결되지 않은 guard: 로그인 세션이 바뀌어도 계속 "현재"라고 답한다.
+      final staleGuard = SessionGuard()..startSession('kevin@umc.com');
+      final vm = FavoriteDetailViewModel(
+        movieId: movieId,
+        favoriteApi: api,
+        auth: auth,
+        sessionGuard: staleGuard,
+        accountId: 'kevin@umc.com',
+      );
+      vms.add(vm);
+      api.gates['check'] = Completer<void>();
+      api.failOnce['check'] = [
+        apiFailure('/favorites/550', 401, code: 'AUTH401_3', message: '만료'),
+      ];
+      final late = vm.load();
+
+      await auth.logout();
+      await signIn('kevin@umc.com'); // 새 로그인 세션
+      final deletesBefore = storage.deletes;
+      api.gates['check']!.complete();
+      await late;
+      expect(auth.status, AuthStatus.signedIn, reason: '이전 세션의 401로 새 세션을 지우지 않는다');
+      expect(auth.sessionExpired, isFalse);
+      expect(storage.deletes, deletesBefore);
+      expect(storage.token, isNotNull);
     });
 
     test('이전 세션에서 늦게 도착한 성공 응답은 화면 상태에 반영하지 않는다', () async {

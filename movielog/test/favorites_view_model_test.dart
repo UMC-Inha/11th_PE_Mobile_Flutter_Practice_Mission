@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/core/session/auth_session_bridge.dart';
+import 'package:movielog/core/session/session_guard.dart';
 import 'package:movielog/view_models/auth_view_model.dart';
 import 'package:movielog/view_models/favorites_view_model.dart';
 import 'package:movielog/view_models/load_phase.dart';
@@ -303,6 +304,32 @@ void main() {
       expect(auth.sessionExpired, isTrue);
       expect(storage.deletes, 1);
       expect(vm.phase, isNot(LoadPhase.error));
+    });
+
+    test('SessionGuard가 새 세션을 아직 모르는 틈에도, 이전 인증 세션의 늦은 401로 새 세션을 지우지 않는다(forVersion)', () async {
+      final staleGuard = SessionGuard()..startSession('kevin@umc.com');
+      final vm = FavoritesViewModel(
+        favoriteApi: api,
+        tmdbApi: tmdb,
+        auth: auth,
+        sessionGuard: staleGuard,
+        accountId: 'kevin@umc.com',
+      );
+      vms.add(vm);
+      api.gates['list'] = Completer<void>();
+      api.failOnce['list'] = [
+        apiFailure('/favorites', 401, code: 'AUTH401_3', message: '만료'),
+      ];
+      final loading = vm.refresh();
+
+      await auth.logout();
+      await signIn('kevin@umc.com');
+      final deletesBefore = storage.deletes;
+      api.gates['list']!.complete();
+      await loading;
+      expect(auth.status, AuthStatus.signedIn);
+      expect(auth.sessionExpired, isFalse);
+      expect(storage.deletes, deletesBefore);
     });
 
     test('403은 로그아웃하지 않고 error로 보여 준다', () async {

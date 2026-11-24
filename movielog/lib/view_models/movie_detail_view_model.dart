@@ -1,7 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:movielog/core/network/api_error.dart';
+import 'package:movielog/data/models/movie_record_models.dart';
 import 'package:movielog/data/models/movielog_dtos.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
+import 'package:movielog/data/services/movie_record_api_service.dart';
 import 'package:movielog/data/services/rating_api_service.dart';
 import 'package:movielog/data/services/tmdb_movie_service.dart';
 import 'package:movielog/view_models/auth_view_model.dart';
@@ -12,6 +15,40 @@ import 'package:movielog/view_models/session_ratings.dart';
 import 'package:movielog/view_models/submit_status.dart';
 
 enum MovieDetailLoadStatus { loading, success, error }
+
+/// [MovieDetailViewModel.saveMovieRecord]의 결과. 화면(Dialog)이 다음 행동을 고르는 데 쓴다.
+///
+/// - 저장 성공: [record]에 서버 응답이 있다.
+/// - [closesDialog] false인 실패: 입력을 고치거나 다시 시도할 수 있으니 Dialog를 열어 둔 채
+///   [message]를 Dialog 안에 보여 주고 입력(별점·코멘트·체크)은 그대로 둔다.
+/// - [closesDialog] true인 실패: 다시 눌러도 소용없는 상황(이미 평점이 있음·이미 즐겨찾기·회원 없음)이라
+///   Dialog를 닫고 [message]를 Snackbar로 안내한다.
+/// - 둘 다 아니면(record도 message도 null) 지난 세션의 응답이라 아무것도 하지 않는다.
+class MovieRecordSaveResult {
+  const MovieRecordSaveResult.saved(MovieRecordResponseDto this.record)
+    : message = null,
+      closesDialog = false;
+
+  const MovieRecordSaveResult.failed(
+    String this.message, {
+    required this.closesDialog,
+  }) : record = null;
+
+  const MovieRecordSaveResult.ignored()
+    : record = null,
+      message = null,
+      closesDialog = false;
+
+  final MovieRecordResponseDto? record;
+  final String? message;
+  final bool closesDialog;
+
+  bool get isSaved => record != null;
+  bool get isIgnored => record == null && message == null;
+}
+
+/// 다시 눌러도 결과가 같은 `409`·`404`라서 Dialog를 닫고 Snackbar로 알리는 서버 code들.
+const _dialogClosingCodes = {'RATING409_1', 'FAVORITE409_1', 'MEMBER404_1'};
 
 /// 영화 상세 ViewModel. 목록에서 넘겨받은 DTO가 있으면 바로 쓰고,
 /// 주소로 바로 열었으면 Route의 TMDB `movieId`로 Movie Details를 조회한다.
@@ -24,6 +61,7 @@ class MovieDetailViewModel extends ChangeNotifier {
     this._ratingApi,
     this._auth,
     this._sessionRatings, {
+    required this.movieRecordApi,
     required this.movieId,
     this.movie,
   }) : status = movie == null
@@ -34,6 +72,9 @@ class MovieDetailViewModel extends ChangeNotifier {
   final RatingApiService _ratingApi;
   final AuthViewModel _auth;
   final SessionRatings _sessionRatings;
+
+  /// 평점과 즐겨찾기를 한 번에 저장하는 `POST /movie-records`.
+  final MovieRecordApiService movieRecordApi;
   final int movieId;
   TmdbMovieDto? movie;
   MovieDetailLoadStatus status;
@@ -115,6 +156,78 @@ class MovieDetailViewModel extends ChangeNotifier {
       submitMessage = unknownWriteResultMessage;
     }
     notifyListeners();
+  }
+
+  /// 평점과 즐겨찾기를 한 번에 저장한다(`POST /movie-records`). 아직 즐겨찾기하지 않은 영화에서만 쓴다.
+  ///
+  /// 이미 즐겨찾기한 영화는 기존 [createRating](`POST /ratings`)을 쓴다. 실패는 예외 대신 [MovieRecordSaveResult]로
+  /// 돌려주고, 같은 요청을 자동으로 다시 보내지 않는다(timeout이면 서버에는 저장됐을 수 있어서, 사용자가 다시 누르면
+  /// `RATING409_1`로 알려 준다).
+  Future<MovieRecordSaveResult> saveMovieRecord({
+    required int score,
+    String? comment,
+    required bool addToFavorites,
+  }) async {
+    if (!_auth.isSignedIn) {
+      return const MovieRecordSaveResult.failed('로그인이 필요해요.', closesDialog: false);
+    }
+    if (submitStatus == SubmitStatus.submitting) {
+      return const MovieRecordSaveResult.ignored(); // 중복 탭 무시
+    }
+
+    final version = _auth.sessionVersion;
+    submitStatus = SubmitStatus.submitting;
+    submitMessage = null;
+    notifyListeners();
+
+    MovieRecordSaveResult result;
+    try {
+      final record = await movieRecordApi.createRecord(
+        CreateMovieRecordRequest(
+          movieId: movieId,
+          score: score,
+          comment: comment,
+          addToFavorites: addToFavorites,
+        ),
+      );
+      if (_disposed || !isSameSession(_auth, version)) {
+        return const MovieRecordSaveResult.ignored();
+      }
+      _sessionRatings.add(record.rating, version: version);
+      myRating = record.rating;
+      submitStatus = SubmitStatus.success;
+      result = MovieRecordSaveResult.saved(record);
+    } on DioException catch (error) {
+      final text = await handleRatingError(
+        error,
+        auth: _auth,
+        version: version,
+      );
+      if (_disposed || (_auth.isSignedIn && _auth.sessionVersion != version)) {
+        return const MovieRecordSaveResult.ignored();
+      }
+      final code = apiErrorCode(error);
+      var message = text;
+      // 이미 즐겨찾기한 영화(409)면 서버가 평점도 저장하지 않았다. 그 사실을 함께 알린다.
+      if (code == 'FAVORITE409_1') message = '$text 평점은 저장되지 않았어요.';
+      submitStatus = SubmitStatus.error;
+      submitMessage = message;
+      result = MovieRecordSaveResult.failed(
+        message,
+        closesDialog: _dialogClosingCodes.contains(code),
+      );
+    } catch (_) {
+      // 201이 아닌 성공 응답이나 파싱 실패처럼 계약에서 벗어난 응답. 저장됐는지 알 수 없다.
+      if (_disposed) return const MovieRecordSaveResult.ignored();
+      submitStatus = SubmitStatus.error;
+      submitMessage = unknownWriteResultMessage;
+      result = const MovieRecordSaveResult.failed(
+        unknownWriteResultMessage,
+        closesDialog: false,
+      );
+    }
+    notifyListeners();
+    return result;
   }
 
   @override
