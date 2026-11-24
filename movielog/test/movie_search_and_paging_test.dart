@@ -249,14 +249,107 @@ void main() {
       expect(tmdb.searchCalls, isEmpty);
     });
 
-    testWidgets('입력만으로는 요청하지 않고 제출할 때 검색한다(Challenge A 전의 동작)', (tester) async {
+    testWidgets('검색 키로 제출하면 기다리지 않고 바로 요청한다(debounce와 별개로 유지)', (tester) async {
       await openSearchFromList(tester);
       await tester.enterText(find.byKey(movieSearchFieldKey), '매트릭스');
-      await tester.pump(const Duration(seconds: 2));
+      await tester.pump(const Duration(milliseconds: 100));
       expect(tmdb.searchCalls, isEmpty);
       await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump();
+      expect(tmdb.searchCalls.map((c) => c.query), ['매트릭스'], reason: '500ms를 기다리지 않는다');
       await settle(tester);
-      expect(tmdb.searchCalls.map((c) => c.query), ['매트릭스']);
+      // 제출로 대기 중이던 자동 검색은 취소되어 같은 검색어가 두 번 나가지 않는다.
+      await tester.pump(const Duration(seconds: 2));
+      expect(tmdb.searchCalls, hasLength(1));
+    });
+
+    group('입력만으로 검색(Challenge A: debounce 500ms)', () {
+      testWidgets('입력하고 500ms가 지나기 전에는 요청이 없고, 지나면 한 번만 요청한다', (tester) async {
+        await openSearchFromList(tester);
+        await tester.enterText(find.byKey(movieSearchFieldKey), '매트릭스');
+        await tester.pump(const Duration(milliseconds: 499));
+        expect(tmdb.searchCalls, isEmpty);
+        await tester.pump(const Duration(milliseconds: 2));
+        expect(tmdb.searchCalls.map((c) => (c.page, c.query)), [(1, '매트릭스')]);
+        await settle(tester);
+        await tester.pump(const Duration(seconds: 3));
+        expect(tmdb.searchCalls, hasLength(1), reason: '한 번 입력에 요청은 한 번');
+        expect(find.byKey(searchResultsKey), findsOneWidget);
+      });
+
+      testWidgets('연속으로 입력하면 이전 타이머를 취소하고 마지막 입력만 요청한다', (tester) async {
+        await openSearchFromList(tester);
+        await tester.enterText(find.byKey(movieSearchFieldKey), '매');
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.enterText(find.byKey(movieSearchFieldKey), '매트');
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.enterText(find.byKey(movieSearchFieldKey), '매트릭스');
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(tmdb.searchCalls, isEmpty, reason: '마지막 입력 뒤 500ms가 아직 안 지났다');
+        await tester.pump(const Duration(milliseconds: 250));
+        await settle(tester);
+        expect(tmdb.searchCalls.map((c) => c.query), ['매트릭스']);
+      });
+
+      testWidgets('앞뒤 공백은 trim해서 요청한다', (tester) async {
+        await openSearchFromList(tester);
+        await tester.enterText(find.byKey(movieSearchFieldKey), '   매트릭스   ');
+        await tester.pump(const Duration(milliseconds: 600));
+        await settle(tester);
+        expect(tmdb.searchCalls.single, (page: 1, query: '매트릭스'));
+      });
+
+      testWidgets('빈 값·공백뿐인 값은 요청하지 않고 입력 안내도 띄우지 않는다', (tester) async {
+        await openSearchFromList(tester);
+        await tester.enterText(find.byKey(movieSearchFieldKey), '   ');
+        await tester.pump(const Duration(seconds: 1));
+        await tester.enterText(find.byKey(movieSearchFieldKey), '');
+        await tester.pump(const Duration(seconds: 1));
+        expect(tmdb.searchCalls, isEmpty);
+        expect(find.text('검색어를 입력해 주세요.'), findsNothing);
+        expect(find.byKey(searchIdleKey), findsOneWidget);
+      });
+
+      testWidgets('입력 후 지웠다면 대기 중이던 검색은 실행되지 않는다', (tester) async {
+        await openSearchFromList(tester);
+        await tester.enterText(find.byKey(movieSearchFieldKey), '매트릭스');
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.enterText(find.byKey(movieSearchFieldKey), '');
+        await tester.pump(const Duration(seconds: 1));
+        expect(tmdb.searchCalls, isEmpty);
+      });
+
+      testWidgets('화면을 벗어나면 대기 중인 타이머가 취소되어 요청도 오류도 없다', (tester) async {
+        await openSearchFromList(tester);
+        await tester.enterText(find.byKey(movieSearchFieldKey), '매트릭스');
+        await tester.pump(const Duration(milliseconds: 200));
+        await tester.tap(find.byType(BackButton));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.byType(MovieSearchScreen), findsNothing);
+        await tester.pump(const Duration(seconds: 2));
+        expect(tmdb.searchCalls, isEmpty, reason: 'dispose에서 타이머를 취소했다');
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('먼저 시작한 느린 검색의 응답은 나중 입력의 결과를 덮지 않는다(generation)', (tester) async {
+        await openSearchFromList(tester);
+        final slow = Completer<void>();
+        tmdb.beforeResponse = (call) async {
+          if (call.query == '느린') await slow.future;
+        };
+        await tester.enterText(find.byKey(movieSearchFieldKey), '느린');
+        await tester.pump(const Duration(milliseconds: 600)); // '느린' 요청이 나가고 응답은 붙잡힘
+        await tester.enterText(find.byKey(movieSearchFieldKey), '빠른');
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.textContaining('빠른 결과 1'), findsOneWidget);
+
+        slow.complete();
+        await settle(tester);
+        expect(find.textContaining('느린 결과'), findsNothing);
+        expect(find.textContaining('빠른 결과 1'), findsOneWidget);
+        expect(tmdb.searchCalls.map((c) => c.query), ['느린', '빠른']);
+      });
     });
 
     testWidgets('빈 검색어(공백 포함)는 서버로 보내지 않고 입력 안내만 보인다', (tester) async {
@@ -315,20 +408,21 @@ void main() {
       expect(find.byKey(searchResultsKey), findsNothing);
     });
 
-    testWidgets('검색이 실패하면 오류 화면이고, 다시 시도는 마지막으로 제출한 검색어로 요청한다', (tester) async {
+    testWidgets('검색이 실패하면 오류 화면이고, 다시 시도는 마지막으로 검색한 검색어로 요청한다', (tester) async {
       await openSearchFromList(tester);
       tmdb.failSearch = true;
       await submit(tester, '매트릭스');
       expect(find.byKey(searchErrorKey), findsOneWidget);
       expect(find.byKey(searchEmptyKey), findsNothing);
 
-      // 입력창을 바꿔 놓아도(제출하지 않은 글자) 다시 시도는 마지막 제출 검색어다.
-      await tester.enterText(find.byKey(movieSearchFieldKey), '다른글자');
       tmdb.failSearch = false;
       await tester.tap(find.byKey(searchRetryKey));
       await settle(tester);
       expect(find.byKey(searchResultsKey), findsOneWidget);
-      expect(tmdb.searchCalls.last, (page: 1, query: '매트릭스'));
+      expect(tmdb.searchCalls.map((c) => (c.page, c.query)), [
+        (1, '매트릭스'),
+        (1, '매트릭스'),
+      ]);
     });
 
     testWidgets('결과도 "더 보기"로 같은 검색어의 다음 page를 이어 받는다', (tester) async {
