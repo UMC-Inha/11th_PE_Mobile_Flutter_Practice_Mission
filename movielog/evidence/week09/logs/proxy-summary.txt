@@ -1,0 +1,16 @@
+3x DELETE /favorites/{id} -> 200
+2x DELETE /favorites/{id} -> aborted
+1x DELETE /favorites/{id} -> drop
+6x GET /favorites -> 200
+1x GET /favorites -> 304
+2x GET /favorites -> 401
+1x GET /favorites -> 403
+1x GET /favorites -> drop
+10x GET /favorites/{id} -> 200
+4x GET /members/me -> 200
+3x GET /members/me -> 304
+6x POST /auth/login -> 200
+2x POST /favorites -> 201
+1x POST /favorites -> drop
+3x POST /movie-records -> 201
+1x POST /movie-records -> 503

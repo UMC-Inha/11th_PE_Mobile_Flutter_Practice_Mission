@@ -1,0 +1,7 @@
+# 9주차 콘솔 로그 점검 (앱이 남기는 개발 로그)
+- MovieLog 요청 Header 로그: "Authorization: Bearer ***" (토큰 가림)
+- 로그인 응답 Body 로그: result: {nickname: 테스터B, accessToken: ***}
+- TMDB 요청 Header 로그: "Authorization: Bearer ***" (TMDB 토큰도 가림)
+- [error] 줄: 주입한 실패(500·503·401·403)의 "Failed to load resource" 뿐이다. 앱 예외(Unhandled/dispose 오류)는 보이지 않았다.
+- 프록시 요청 기록(proxy-requests.ndjson)·가짜 TMDB 기록(tmdb-requests.ndjson)에는 토큰·비밀번호·본문이 없다 (eyJ / password / Bearer 검색 결과 0건).
+- check_auth_log.mjs: 보호 경로 41건 모두 Authorization 있음, 공개 경로 6건 모두 없음, TMDB 47건은 TMDB 전용 값만 → 위반 없음 (check-auth-log.txt)

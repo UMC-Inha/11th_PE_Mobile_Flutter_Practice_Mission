@@ -1,0 +1,11 @@
+# 9주차 저장소 점검 (Flutter Web, Chrome 390x844, http://localhost:8099, 계정 B 로그인 상태)
+# 확인 방법: 브라우저 콘솔에서 localStorage / sessionStorage / document.cookie 를 읽어, 길이와 "JWT 모양인지"만 기록했다. 값 자체는 기록하지 않는다.
+localStorage:
+  FlutterSecureStorage.movielog.access_token   길이 273   JWT 모양(eyJ….….…)  아니오   JWT 조각 포함  아니오
+  FlutterSecureStorage                          길이 44    JWT 모양  아니오
+  selected_genre_ids                            길이 2     (장르 선택 저장값)
+  movie_sort                                    길이 10    (정렬 저장값)
+sessionStorage: dartAppInstanceId
+document.cookie: 길이 0
+해석: 웹의 flutter_secure_storage 는 값을 WebCrypto 로 암호화해 localStorage 에 둔다(토큰 원문이 JWT 모양으로 보이지 않는다).
+      이것은 iOS Keychain / Android Keystore 가 아니다. 모바일 기기의 보안 저장소는 이 환경(Xcode·Android SDK 없음)에서 확인하지 못했다.

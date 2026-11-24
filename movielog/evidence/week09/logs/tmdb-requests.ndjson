@@ -1,0 +1,47 @@
+{"t":"2026-11-24T15:29:57.719Z","seq":1,"method":"GET","path":"/movie/popular","q":{"page":"1","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":1}
+{"t":"2026-11-24T15:30:51.181Z","seq":2,"method":"GET","path":"/movie/1001","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:30:51.182Z","seq":3,"method":"GET","path":"/movie/1007","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:30:51.183Z","seq":4,"method":"GET","path":"/movie/1005","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:30:51.184Z","seq":5,"method":"GET","path":"/movie/1003","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:31:06.438Z","seq":6,"method":"GET","path":"/movie/1001","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:31:06.438Z","seq":7,"method":"GET","path":"/movie/1007","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:31:06.438Z","seq":8,"method":"GET","path":"/movie/1005","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:31:06.439Z","seq":9,"method":"GET","path":"/movie/1003","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","rule":1,"injected":"fail:500","status":500,"ms":0}
+{"t":"2026-11-24T15:31:14.405Z","seq":10,"method":"GET","path":"/movie/1003","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:31:25.038Z","seq":11,"method":"GET","path":"/genre/movie/list","q":{"language":"ko"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:31:25.044Z","seq":12,"method":"GET","path":"/discover/movie","q":{"page":"1","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:31:49.842Z","seq":13,"method":"GET","path":"/discover/movie","q":{"page":"2","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","rule":2,"injected":"fail:503","status":503,"ms":0}
+{"t":"2026-11-24T15:31:58.214Z","seq":14,"method":"GET","path":"/discover/movie","q":{"page":"2","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:32:32.696Z","seq":15,"method":"GET","path":"/discover/movie","q":{"page":"3","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:33:25.597Z","seq":16,"method":"GET","path":"/discover/movie","q":{"page":"1","with_genres":"12","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:33:29.599Z","seq":17,"method":"GET","path":"/discover/movie","q":{"page":"1","with_genres":"28","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","rule":3,"delayMs":4000,"injected":"delay","status":200,"ms":4002}
+{"t":"2026-11-24T15:33:53.472Z","seq":18,"method":"GET","path":"/movie/popular","q":{"page":"1","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:33:57.508Z","seq":19,"method":"GET","path":"/movie/1002","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:34:32.420Z","seq":20,"method":"GET","path":"/movie/popular","q":{"page":"1","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:35:10.563Z","seq":21,"method":"GET","path":"/movie/popular","q":{"page":"1","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:35:24.623Z","seq":22,"method":"GET","path":"/movie/1001","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:35:24.623Z","seq":23,"method":"GET","path":"/movie/1007","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:35:24.624Z","seq":24,"method":"GET","path":"/movie/1005","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:35:24.624Z","seq":25,"method":"GET","path":"/movie/1003","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:36:53.861Z","seq":26,"method":"GET","path":"/movie/1001","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:36:53.862Z","seq":27,"method":"GET","path":"/movie/1007","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:36:53.862Z","seq":28,"method":"GET","path":"/movie/1005","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:38:59.635Z","seq":29,"method":"GET","path":"/movie/popular","q":{"page":"1","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:39:03.837Z","seq":30,"method":"GET","path":"/genre/movie/list","q":{"language":"ko"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:39:03.841Z","seq":31,"method":"GET","path":"/discover/movie","q":{"page":"1","with_genres":"12","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:39:16.686Z","seq":32,"method":"GET","path":"/search/movie","q":{"page":"1","query":"예시 영화 1001","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:39:28.501Z","seq":33,"method":"GET","path":"/search/movie","q":{"page":"1","query":"예시 영화 1001예시","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:39:29.505Z","seq":34,"method":"GET","path":"/search/movie","q":{"page":"1","query":"예시 영화 1001예시 영화 1001","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:39:48.433Z","seq":35,"method":"GET","path":"/search/movie","q":{"page":"1","query":"예시 영화 1001","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:39:51.173Z","seq":36,"method":"GET","path":"/search/movie","q":{"page":"1","query":"예시","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","rule":4,"delayMs":4000,"injected":"delay","status":200,"ms":4002}
+{"t":"2026-11-24T15:40:21.928Z","seq":37,"method":"GET","path":"/discover/movie","q":{"page":"2","with_genres":"12","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:40:52.229Z","seq":38,"method":"GET","path":"/discover/movie","q":{"page":"1","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:41:06.503Z","seq":39,"method":"GET","path":"/discover/movie","q":{"page":"2","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","rule":5,"injected":"fail:503","status":503,"ms":0}
+{"t":"2026-11-24T15:41:24.673Z","seq":40,"method":"GET","path":"/discover/movie","q":{"page":"2","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:46:57.912Z","seq":41,"method":"GET","path":"/movie/popular","q":{"page":"1","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:47:08.977Z","seq":42,"method":"GET","path":"/movie/1002","q":{"language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:47:49.993Z","seq":43,"method":"GET","path":"/movie/popular","q":{"page":"1","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:47:53.038Z","seq":44,"method":"GET","path":"/genre/movie/list","q":{"language":"ko"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:47:53.043Z","seq":45,"method":"GET","path":"/discover/movie","q":{"page":"1","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
+{"t":"2026-11-24T15:48:05.493Z","seq":46,"method":"GET","path":"/search/movie","q":{"page":"1","query":"예시 영화 1010","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","rule":6,"injected":"fail:500","status":500,"ms":0}
+{"t":"2026-11-24T15:48:11.266Z","seq":47,"method":"GET","path":"/search/movie","q":{"page":"1","query":"예시 영화 1010","language":"ko-KR"},"auth":true,"authKind":"tmdb-dummy","status":200,"ms":0}
