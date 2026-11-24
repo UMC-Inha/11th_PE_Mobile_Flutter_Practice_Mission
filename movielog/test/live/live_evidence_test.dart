@@ -14,10 +14,7 @@ import 'package:movielog/data/services/tmdb_movie_service.dart';
 import 'package:movielog/features/movies/presentation/movie_detail_screen.dart';
 import 'package:movielog/features/movies/presentation/movie_list_screen.dart';
 import 'package:movielog/features/movies/presentation/widgets/genre_filter_sheet.dart';
-import 'package:movielog/features/movies/presentation/widgets/movie_grid.dart';
-import 'package:movielog/features/movies/presentation/widgets/retry_dialog.dart';
 import 'package:movielog/view_models/movie_home_view_model.dart';
-import 'package:movielog/view_models/movie_list_view_model.dart';
 import 'package:movielog/widgets/tmdb_poster_image.dart';
 
 import '../support.dart';
@@ -33,7 +30,10 @@ void main() {
 
   testWidgets(
     '실제 TMDB 응답으로 인기 5개·Discover 30개·장르 재요청 화면을 남긴다',
-    skip: liveSkipReason(needsToken: true) != null,
+    // 5주차 구현(Discover 30개 수집·재시도 Dialog)을 기록하던 증거 생성기다. 9주차에 영화 목록이
+    // "더 보기"로 바뀌었고, 8주차부터 로그인이 필요해 이 화면 흐름은 더 이상 그대로 실행되지 않는다.
+    // 컴파일만 유지하고 실행하지 않는다.
+    skip: true,
     (tester) async {
       tester.view.physicalSize = const Size(780 * 2, 844 * 2);
       tester.view.devicePixelRatio = 2;
@@ -88,16 +88,14 @@ void main() {
         popular5 = home.popularMovies;
 
         progress('1-2 Genre + Discover 전체');
-        final list = MovieListViewModel(tmdb);
-        await list.loadInitial();
-        all30 = list.movies;
-        discoverPagesAll = list.discoverRequestCount;
+        await tmdb.fetchGenres();
+        final all = await _collectUpToThirty(tmdb, null);
+        all30 = all.movies;
+        discoverPagesAll = all.requests;
         progress('1-3 Discover 액션');
-        await list.selectGenre(28);
-        action30 = list.movies;
+        action30 = (await _collectUpToThirty(tmdb, const [28])).movies;
         progress('1-4 Discover 액션|모험');
-        await list.selectGenres(const [28, 12]);
-        multi30 = list.movies;
+        multi30 = (await _collectUpToThirty(tmdb, const [28, 12])).movies;
 
         progress('1-5 자체 백엔드');
         await api.fetchMemberRatings(1); // 공개 조회(유저별 평점)는 토큰이 필요 없다
@@ -105,7 +103,11 @@ void main() {
         await api.checkNickname('케빈');
         await api.checkEmail('kevin@umc.com');
         progress('1-6 잘못된 Token');
-        await MovieListViewModel(wrongTokenTmdb).loadInitial(); // 실제 401
+        await wrongTokenTmdb.fetchGenres().then<void>((_) {}).catchError((
+          Object _,
+        ) {
+          // 실제 401
+        });
         progress('1-7 실제 호출 끝');
       });
 
@@ -288,20 +290,6 @@ void main() {
       await shot('06_multi_genre');
       await frames(8);
 
-      progress('2-5 재시도 Dialog');
-      // 새로고침 실패 → 목록 유지 + 재시도 Dialog → 다시 시도
-      tmdb.failNextDiscover = true;
-      await tester.drag(find.byType(MovieGrid), const Offset(0, 420));
-      await frames(12);
-      await tester.pumpAndSettle();
-      expect(find.byType(RetryDialog), findsOneWidget);
-      await shot('07_retry_dialog');
-      await tester.tap(find.byKey(retryDialogRetryKey));
-      await frames(12);
-      await tester.pumpAndSettle();
-      expect(find.byType(RetryDialog), findsNothing);
-      await shot('08_retry_success');
-
       progress('2-6 상세');
       // 카드 → 상세: Path에 TMDB id
       final first = multi30.first;
@@ -424,4 +412,31 @@ class _NetworkPanel extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// 5주차 방식(Discover를 page 1부터 불러 중복 없이 최대 30개 수집)을 이 증거 생성기 안에서만
+/// 재현한다. 앱의 영화 목록은 9주차에 PagedMoviesViewModel의 "더 보기"로 바뀌었다.
+Future<({List<TmdbMovieDto> movies, int requests})> _collectUpToThirty(
+  TmdbMovieService service,
+  List<int>? genreIds,
+) async {
+  final byId = <int, TmdbMovieDto>{};
+  var pageNumber = 1;
+  var hasNextPage = true;
+  var requests = 0;
+  while (byId.length < 30 && hasNextPage) {
+    requests++;
+    final page = await service.discoverMovies(
+      page: pageNumber,
+      genreIds: genreIds,
+    );
+    for (final movie in page.results) {
+      byId[movie.id] = movie;
+      if (byId.length == 30) break;
+    }
+    hasNextPage = pageNumber < page.totalPages && page.results.isNotEmpty;
+    pageNumber++;
+  }
+  return (movies: byId.values.take(30).toList(), requests: requests);
 }

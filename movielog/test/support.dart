@@ -12,11 +12,14 @@ import 'package:movielog/core/storage/email_preference.dart';
 import 'package:movielog/core/storage/token_storage.dart';
 import 'package:movielog/data/models/common_response.dart';
 import 'package:movielog/data/models/create_member_request.dart';
+import 'package:movielog/data/models/favorite_check_dto.dart';
+import 'package:movielog/data/models/favorite_response_dto.dart';
 import 'package:movielog/data/models/login_models.dart';
 import 'package:movielog/data/models/member_info.dart';
 import 'package:movielog/data/models/movielog_dtos.dart';
 import 'package:movielog/data/models/sign_up_models.dart';
 import 'package:movielog/data/services/auth_api_service.dart';
+import 'package:movielog/data/services/favorite_api_service.dart';
 import 'package:movielog/data/services/member_api_service.dart';
 import 'package:movielog/data/services/rating_api_service.dart';
 import 'package:movielog/data/models/tmdb_genre_dto.dart';
@@ -113,13 +116,34 @@ class FakeTmdbMovieService implements TmdbMovieService {
   List<TmdbMovieDto>? popularResults;
   final moviesById = <int, TmdbMovieDto>{};
 
+  /// 이 함수가 있으면 검색 결과를 대신 만든다.
+  TmdbMoviePageDto Function(int page, String query)? searchPage;
+
+  /// true면 검색이 실패한다.
+  bool failSearch = false;
+
+  /// 이 TMDB id의 영화 조회(`fetchMovie`·`findMovieById`)만 실패한다(영화 한 건 실패 재현).
+  final failMovieIds = <int>{};
+
   /// 값이 있으면 응답을 이 Future가 끝날 때까지 붙잡는다.
   Completer<void>? gate;
 
+  /// Discover·Search 요청마다 불리고, 돌려준 Future가 끝나야 응답이 나간다.
+  /// 요청 순서와 응답 순서를 뒤집어(먼저 보낸 요청이 늦게 끝나게) 늦은 응답을 재현할 때 쓴다.
+  Future<void> Function(
+    ({String kind, int page, List<int>? genreIds, String? query}) call,
+  )?
+  beforeResponse;
+
   final discoverCalls = <({int page, List<int>? genreIds})>[];
+  final searchCalls = <({int page, String query})>[];
   int popularCalls = 0;
   int genreCalls = 0;
   final movieCalls = <int>[];
+
+  /// 영화 상세 조회가 동시에 몇 개까지 나갔는지(mapBounded 한도 확인용).
+  int _inFlightMovieCalls = 0;
+  int maxConcurrentMovieCalls = 0;
 
   Future<void> _wait() async {
     if (gate != null) await gate!.future;
@@ -154,6 +178,12 @@ class FakeTmdbMovieService implements TmdbMovieService {
   }) async {
     discoverCalls.add((page: page, genreIds: genreIds));
     await _wait();
+    await beforeResponse?.call((
+      kind: 'discover',
+      page: page,
+      genreIds: genreIds,
+      query: null,
+    ));
     if (failDiscover) throw failure('/discover/movie');
     final custom = discoverPage;
     if (custom != null) return custom(page, genreIds);
@@ -185,6 +215,36 @@ class FakeTmdbMovieService implements TmdbMovieService {
   }
 
   @override
+  Future<TmdbMoviePageDto> searchMovies({
+    required int page,
+    required String query,
+  }) async {
+    searchCalls.add((page: page, query: query));
+    await _wait();
+    await beforeResponse?.call((
+      kind: 'search',
+      page: page,
+      genreIds: null,
+      query: query,
+    ));
+    if (failSearch) throw failure('/search/movie');
+    final custom = searchPage;
+    if (custom != null) return custom(page, query);
+    return TmdbMoviePageDto(
+      page: page,
+      results: List.generate(
+        perPage,
+        (i) => movie(
+          (query.hashCode.abs() % 1000) * 1000 + (page - 1) * perPage + i + 1,
+          title: '$query 결과 ${(page - 1) * perPage + i + 1}',
+        ),
+      ),
+      totalPages: totalPages,
+      totalResults: totalPages * perPage,
+    );
+  }
+
+  @override
   Future<List<TmdbGenreDto>> fetchGenres() async {
     genreCalls++;
     await _wait();
@@ -194,10 +254,20 @@ class FakeTmdbMovieService implements TmdbMovieService {
   @override
   Future<TmdbMovieDto> fetchMovie(int movieId) async {
     movieCalls.add(movieId);
-    await _wait();
-    final found = moviesById[movieId];
-    if (found == null) throw failure('/movie/$movieId');
-    return found;
+    _inFlightMovieCalls++;
+    if (_inFlightMovieCalls > maxConcurrentMovieCalls) {
+      maxConcurrentMovieCalls = _inFlightMovieCalls;
+    }
+    try {
+      await _wait();
+      final found = moviesById[movieId];
+      if (found == null || failMovieIds.contains(movieId)) {
+        throw failure('/movie/$movieId');
+      }
+      return found;
+    } finally {
+      _inFlightMovieCalls--;
+    }
   }
 
   /// TMDB가 404를 주는 영화 ID. [findMovieById]는 이 ID에 null을 돌려준다.
@@ -210,7 +280,9 @@ class FakeTmdbMovieService implements TmdbMovieService {
     if (notFoundMovieIds.contains(movieId)) return null;
     // 목록에도 404 목록에도 없으면 일시적인 네트워크 실패로 본다.
     final found = moviesById[movieId];
-    if (found == null) throw failure('/movie/$movieId');
+    if (found == null || failMovieIds.contains(movieId)) {
+      throw failure('/movie/$movieId');
+    }
     return found;
   }
 }
@@ -241,6 +313,13 @@ DioException networkFailure(String path) => DioException(
   requestOptions: RequestOptions(path: path),
   type: DioExceptionType.connectionError,
   message: 'network down',
+);
+
+/// 응답이 오지 않아 시간 초과로 끝난 오류. 서버에서는 처리됐는지 알 수 없다.
+DioException timeoutFailure(String path) => DioException(
+  requestOptions: RequestOptions(path: path),
+  type: DioExceptionType.receiveTimeout,
+  message: 'timeout',
 );
 
 /// 로그인된 사용자의 기본 내 정보. 가입일은 시간대에 따라 날짜가 달라지지 않게 정오(로컬)로 둔다.
@@ -517,6 +596,135 @@ class FakeRatingApiService implements RatingApiService {
   }
 }
 
+/// 즐겨찾기 API 대역(토큰 기반, memberId 없음). 서버 쪽 즐겨찾기 상태를 계정별로 들고 있다.
+///
+/// 실제 서버 계약을 따른다: 등록은 이미 있으면 409(FAVORITE409_1), 해제는 없으면 404(FAVORITE404_1),
+/// 목록은 최신 등록순이다. 어느 계정의 요청인지는 [accountOf]가 알려 준다(테스트가 계정 전환을 흉내).
+class FakeFavoriteApiService implements FavoriteApiService {
+  FakeFavoriteApiService({this.accountOf});
+
+  /// 지금 요청한 계정. null이면 계정 하나만 쓴다.
+  String Function()? accountOf;
+
+  final _byAccount = <String, List<FavoriteResponseDto>>{};
+  int _nextId = 1;
+
+  /// 'add'·'delete'·'check'·'list' → 그 호출이 던질 오류. 지울 때까지 계속 던진다.
+  final failures = <String, Object>{};
+
+  /// 앞에서부터 하나씩 던지고 비면 정상으로 돌아가는 일회용 오류들.
+  final failOnce = <String, List<Object>>{};
+
+  /// 이 동작은 서버 상태를 **바꾼 뒤** 응답이 오지 않는다(timeout). 서버에서는 성공한 상황을 재현한다.
+  final timeoutAfterApply = <String>{};
+
+  /// 'add'·'delete'·'check'·'list' → 값이 있으면 응답을 이 Future가 끝날 때까지 붙잡는다.
+  final gates = <String, Completer<void>>{};
+
+  Duration delay = const Duration(milliseconds: 100);
+
+  final addCalls = <int>[];
+  final deleteCalls = <int>[];
+  final checkCalls = <int>[];
+  int listCalls = 0;
+
+  String get _account => accountOf?.call() ?? 'default';
+
+  List<FavoriteResponseDto> favoritesOf([String? account]) =>
+      _byAccount.putIfAbsent(account ?? _account, () => []);
+
+  /// 서버에 즐겨찾기를 심는다. 입력 순서의 **마지막이 가장 최신**이다.
+  void seed(List<int> movieIds, {String? account}) {
+    for (final movieId in movieIds) {
+      favoritesOf(account).insert(
+        0,
+        FavoriteResponseDto(
+          favoriteId: _nextId++,
+          movieId: movieId,
+          createdAt: DateTime.utc(2026, 11, 20),
+        ),
+      );
+    }
+  }
+
+  bool isFavoriteOf(int movieId, {String? account}) =>
+      favoritesOf(account).any((item) => item.movieId == movieId);
+
+  Future<void> _enter(String op, String path) async {
+    await Future<void>.delayed(delay);
+    final gate = gates[op];
+    if (gate != null) await gate.future;
+    final queued = failOnce[op];
+    if (queued != null && queued.isNotEmpty) throw queued.removeAt(0);
+    final error = failures[op];
+    if (error != null) throw error;
+  }
+
+  @override
+  Future<FavoriteResponseDto> addFavorite({required int movieId}) async {
+    addCalls.add(movieId);
+    final account = _account; // 요청을 보낸 시점의 계정
+    await _enter('add', '/favorites');
+    final list = favoritesOf(account);
+    if (list.any((item) => item.movieId == movieId)) {
+      throw apiFailure(
+        '/favorites',
+        409,
+        code: 'FAVORITE409_1',
+        message: '이미 즐겨찾기한 영화입니다.',
+      );
+    }
+    final created = FavoriteResponseDto(
+      favoriteId: _nextId++,
+      movieId: movieId,
+      createdAt: DateTime.utc(2026, 11, 21),
+    );
+    list.insert(0, created);
+    if (timeoutAfterApply.contains('add')) throw timeoutFailure('/favorites');
+    return created;
+  }
+
+  @override
+  Future<List<FavoriteResponseDto>> fetchMyFavorites() async {
+    listCalls++;
+    final account = _account;
+    await _enter('list', '/favorites');
+    return List.of(favoritesOf(account));
+  }
+
+  @override
+  Future<FavoriteCheckDto> checkFavorite({required int movieId}) async {
+    checkCalls.add(movieId);
+    final account = _account;
+    await _enter('check', '/favorites/$movieId');
+    return FavoriteCheckDto(
+      movieId: movieId,
+      isFavorite: favoritesOf(account).any((item) => item.movieId == movieId),
+    );
+  }
+
+  @override
+  Future<void> deleteFavorite({required int movieId}) async {
+    deleteCalls.add(movieId);
+    final account = _account;
+    await _enter('delete', '/favorites/$movieId');
+    final list = favoritesOf(account);
+    final before = list.length;
+    list.removeWhere((item) => item.movieId == movieId);
+    if (list.length == before) {
+      throw apiFailure(
+        '/favorites/$movieId',
+        404,
+        code: 'FAVORITE404_1',
+        message: '즐겨찾기를 찾을 수 없습니다.',
+      );
+    }
+    if (timeoutAfterApply.contains('delete')) {
+      throw timeoutFailure('/favorites/$movieId');
+    }
+  }
+}
+
 /// 공개 MovieLog API 대역(중복 확인, 회원가입, 유저별 평점 조회). 시드 데이터(수현, noco@umc.com)와 같은 답을 한다.
 class FakeMovieLogApiService implements MovieLogApiService {
   FakeMovieLogApiService({
@@ -668,13 +876,17 @@ class FakeMovieLogApiService implements MovieLogApiService {
 class AppHarness {
   AppHarness({String? token = 'stored-token', MemberInfo? member})
     : storage = FakeTokenStorage(token: token),
-      memberApi = FakeMemberApiService(member: member);
+      memberApi = FakeMemberApiService(member: member) {
+    // 즐겨찾기는 계정별이다. 지금 내 정보 대역이 돌려주는 계정의 즐겨찾기를 다룬다.
+    favoriteApi = FakeFavoriteApiService(accountOf: () => memberApi.member.email);
+  }
 
   final FakeTmdbMovieService tmdb = FakeTmdbMovieService();
   final FakeMovieLogApiService publicApi = FakeMovieLogApiService();
   final FakeAuthApiService authApi = FakeAuthApiService();
   final FakeMemberApiService memberApi;
   final FakeRatingApiService ratingApi = FakeRatingApiService();
+  late final FakeFavoriteApiService favoriteApi;
   final FakeTokenStorage storage;
   final MemoryEmailPreference emailPreference = MemoryEmailPreference();
 
@@ -691,6 +903,7 @@ class AppHarness {
     authApiService: authApi,
     memberApiService: memberApi,
     ratingApiService: ratingApi,
+    favoriteApiService: favoriteApi,
     tokenStorage: storage,
     emailPreference: emailPreference,
     preferences: MemoryMoviePreferences(),

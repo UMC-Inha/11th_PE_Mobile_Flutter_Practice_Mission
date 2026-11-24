@@ -5,11 +5,14 @@ import 'package:go_router/go_router.dart';
 import 'package:movielog/app/app_router.dart';
 import 'package:movielog/core/network/movielog_api_client.dart';
 import 'package:movielog/core/network/tmdb_client.dart';
+import 'package:movielog/core/session/auth_session_bridge.dart';
+import 'package:movielog/core/session/session_guard.dart';
 import 'package:movielog/core/storage/email_preference.dart';
 import 'package:movielog/core/storage/genre_preference.dart';
 import 'package:movielog/core/storage/token_storage.dart';
 import 'package:movielog/core/theme/app_theme.dart';
 import 'package:movielog/data/services/auth_api_service.dart';
+import 'package:movielog/data/services/favorite_api_service.dart';
 import 'package:movielog/data/services/member_api_service.dart';
 import 'package:movielog/data/services/movielog_api_service.dart';
 import 'package:movielog/data/services/rating_api_service.dart';
@@ -27,6 +30,7 @@ class MovieLogApp extends StatefulWidget {
     this.authApiService,
     this.memberApiService,
     this.ratingApiService,
+    this.favoriteApiService,
     this.tokenStorage,
     this.emailPreference,
     this.preferences,
@@ -42,6 +46,7 @@ class MovieLogApp extends StatefulWidget {
   final AuthApiService? authApiService;
   final MemberApiService? memberApiService;
   final RatingApiService? ratingApiService;
+  final FavoriteApiService? favoriteApiService;
 
   /// null이면 보안 저장소(SecureTokenStorage). 테스트는 메모리 저장소를 넣는다.
   final TokenStorage? tokenStorage;
@@ -61,7 +66,7 @@ class _MovieLogAppState extends State<MovieLogApp> {
   // 공개 Client: 로그인·회원가입·중복 확인·유저별 평점 조회. 토큰을 붙이지 않는다.
   late final Dio _publicClient = createMovieLogApiClient();
 
-  // 보호 Client: 내 정보·평점 등록/수정/삭제. AuthInterceptor가 보호 경로에만 Bearer를 붙인다.
+  // 보호 Client: 내 정보·평점·즐겨찾기. AuthInterceptor가 보호 경로에만 Bearer를 붙인다.
   late final Dio _authClient = createAuthMovieLogApiClient(_tokenStorage);
 
   late final AuthApiService _authApi =
@@ -115,6 +120,10 @@ class _MovieLogAppState extends State<MovieLogApp> {
           create: (_) =>
               widget.ratingApiService ?? RatingApiService(_authClient),
         ),
+        Provider<FavoriteApiService>(
+          create: (_) =>
+              widget.favoriteApiService ?? FavoriteApiService(_authClient),
+        ),
         Provider<EmailPreference>(
           create: (_) => widget.emailPreference ?? SharedEmailPreference(),
         ),
@@ -125,6 +134,24 @@ class _MovieLogAppState extends State<MovieLogApp> {
         // 이번 로그인 세션에서 등록한 평점. 세션이 바뀌면 비운다.
         ChangeNotifierProvider<SessionRatings>(
           create: (_) => SessionRatings(_auth),
+        ),
+        // 인증 상태(sessionVersion·검증된 email)가 바뀔 때마다 세션 판정기를 새로 시작한다.
+        // 앱을 켠 때부터 AuthViewModel을 지켜봐야 하므로 lazy하지 않게 만든다.
+        Provider<AuthSessionBridge>(
+          lazy: false,
+          create: (context) {
+            final auth = context.read<AuthViewModel>();
+            return AuthSessionBridge(
+              authSignals: auth,
+              sessionVersion: () => auth.sessionVersion,
+              verifiedEmail: () =>
+                  auth.status == AuthStatus.signedIn ? auth.member?.email : null,
+            );
+          },
+          dispose: (_, bridge) => bridge.dispose(),
+        ),
+        Provider<SessionGuard>(
+          create: (context) => context.read<AuthSessionBridge>().guard,
         ),
       ],
       child: MaterialApp.router(

@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/core/storage/genre_preference.dart';
+import 'package:movielog/data/models/tmdb_genre_dto.dart';
 import 'package:movielog/data/models/tmdb_movie_page.dart';
 import 'package:movielog/view_models/movie_home_view_model.dart';
 import 'package:movielog/view_models/movie_list_view_model.dart';
@@ -49,48 +51,36 @@ void main() {
     });
   });
 
-  group('MovieListViewModel — Discover 최대 30개', () {
-    test('page 1부터 필요한 만큼만 요청해 30개를 만든다', () async {
+  group('MovieListViewModel — 첫 page만, 더 보기로 이어서', () {
+    test('첫 page 하나만 요청해 그 page의 영화를 보여준다(30개를 모으지 않는다)', () async {
       final service = FakeTmdbMovieService(delay: Duration.zero);
       final vm = MovieListViewModel(service);
       await vm.loadInitial();
       expect(vm.status, MovieListLoadStatus.success);
-      expect(vm.movies, hasLength(30));
-      expect(service.discoverCalls.map((c) => c.page), [1, 2]);
+      expect(vm.movies, hasLength(20));
+      expect(service.discoverCalls.map((c) => c.page), [1]);
       expect(service.genreCalls, 1);
+      expect(vm.paged.nextPage, 2);
     });
 
-    test('페이지 사이 중복은 TMDB id 기준으로 하나만 남긴다', () async {
+    test('더 보기: 다음 page를 아래에 이어 붙이고 같은 영화는 한 번만 둔다', () async {
       final service = FakeTmdbMovieService(delay: Duration.zero)
-        // 매 페이지가 앞 페이지와 10개씩 겹친다: 1~20, 11~30, 21~40
+        // 매 page가 앞 page와 5개씩 겹친다: 1~20, 16~35
         ..discoverPage = (page, _) => TmdbMoviePageDto(
           page: page,
-          results: List.generate(20, (i) => movie((page - 1) * 10 + i + 1)),
+          results: List.generate(20, (i) => movie((page - 1) * 15 + i + 1)),
           totalPages: 10,
           totalResults: 200,
         );
       final vm = MovieListViewModel(service);
       await vm.loadInitial();
+      await vm.paged.loadNextPage();
       final ids = vm.movies.map((m) => m.id).toList();
-      expect(ids, hasLength(30));
-      expect(ids.toSet(), hasLength(30));
+      expect(ids, hasLength(35));
+      expect(ids.toSet(), hasLength(35));
       expect(ids.first, 1);
-      expect(ids.last, 30);
-      // 1~20, 11~30 두 페이지면 중복 10개를 빼고 정확히 30개가 된다.
+      expect(ids.last, 35);
       expect(service.discoverCalls.map((c) => c.page), [1, 2]);
-    });
-
-    test('마지막 페이지에 닿으면 30개가 안 돼도 멈춘다(오류 아님)', () async {
-      final service = FakeTmdbMovieService(
-        delay: Duration.zero,
-        perPage: 12,
-        totalPages: 1,
-      );
-      final vm = MovieListViewModel(service);
-      await vm.loadInitial();
-      expect(vm.movies, hasLength(12));
-      expect(vm.status, MovieListLoadStatus.success);
-      expect(service.discoverCalls, hasLength(1));
     });
 
     test('결과가 0개면 Empty', () async {
@@ -108,11 +98,14 @@ void main() {
       final service = FakeTmdbMovieService(delay: Duration.zero);
       final vm = MovieListViewModel(service);
       await vm.loadInitial();
+      await vm.paged.loadNextPage(); // 2 page까지 봤다
       service.discoverCalls.clear();
 
       await vm.selectGenre(28);
       expectCall(service.discoverCalls.first, 1, [28]);
+      expect(vm.movies, hasLength(20), reason: '이전 목록을 비우고 새 첫 page만');
       expect(vm.movies.every((m) => m.genreIds.contains(28)), isTrue);
+      expect(vm.paged.nextPage, 2);
       expect(vm.selectionLabel, '액션');
 
       service.discoverCalls.clear();
@@ -134,22 +127,37 @@ void main() {
       expect(vm.primaryGenreName(movie(9, genreIds: const [18, 12])), '드라마');
     });
 
-    test('Discover 요청 중에는 장르를 바꾸지 못한다', () async {
+    test('같은 장르를 다시 고르면 다시 요청하지 않는다', () async {
       final service = FakeTmdbMovieService(delay: Duration.zero);
       final vm = MovieListViewModel(service);
       await vm.loadInitial();
-      service.gate = Completer<void>();
-      final pending = vm.selectGenre(28);
+      await vm.selectGenre(28);
+      service.discoverCalls.clear();
+      await vm.selectGenre(28);
+      expect(service.discoverCalls, isEmpty);
+    });
+
+    test('요청 중에 장르를 바꿔도 이전 장르의 느린 응답이 새 목록에 섞이지 않는다', () async {
+      final service = FakeTmdbMovieService(delay: Duration.zero);
+      final vm = MovieListViewModel(service);
+      await vm.loadInitial();
+      // 액션(28)은 응답을 붙잡고, 모험(12)은 바로 응답한다.
+      final actionGate = Completer<void>();
+      service.beforeResponse = (call) async {
+        if (call.genreIds?.contains(28) ?? false) await actionGate.future;
+      };
+      final action = vm.selectGenre(28);
       expect(vm.status, MovieListLoadStatus.loading);
-      expect(vm.canChangeGenre, isFalse);
-      await vm.selectGenre(12); // 무시된다
-      service.gate!.complete();
-      await pending;
-      expect(vm.selectedGenreIds, [28]);
-      expect(
-        service.discoverCalls.any((c) => c.genreIds?.contains(12) ?? false),
-        isFalse,
-      );
+      expect(vm.canChangeGenre, isTrue, reason: '요청 중에도 바꿀 수 있다');
+      await vm.selectGenre(12);
+      expect(vm.movies.every((m) => m.genreIds.contains(12)), isTrue);
+
+      actionGate.complete(); // 이전 장르의 응답이 뒤늦게 도착한다
+      await action;
+      expect(vm.selectedGenreIds, [12]);
+      expect(vm.movies.every((m) => m.genreIds.contains(12)), isTrue);
+      expect(vm.movies.any((m) => m.genreIds.contains(28)), isFalse);
+      expect(vm.status, MovieListLoadStatus.success);
     });
 
     test('dispose 뒤 늦게 온 응답은 무시한다', () async {
@@ -162,68 +170,47 @@ void main() {
       await pending; // notifyListeners after dispose 예외가 없어야 한다
     });
 
-    test('새로고침: 기존 목록을 유지한 채 다시 받고, Loading 중에는 무시', () async {
+    test('새로고침: 지금 장르 그대로 page 1부터 다시 받는다', () async {
       final service = FakeTmdbMovieService(delay: Duration.zero);
       final vm = MovieListViewModel(service);
       await vm.loadInitial();
       await vm.selectGenre(28);
-      final before = vm.movies;
+      await vm.paged.loadNextPage();
       service.discoverCalls.clear();
-      service.gate = Completer<void>();
 
-      final refreshing = vm.refresh();
-      expect(vm.isRefreshing, isTrue);
-      expect(vm.status, MovieListLoadStatus.success);
-      expect(vm.movies, same(before));
-      await vm.refresh(); // 새로고침 중 두 번째 당김은 무시
-      service.gate!.complete();
-      await refreshing;
-      expect(vm.isRefreshing, isFalse);
-      expectCall(service.discoverCalls.first, 1, [28]);
-      expect(service.discoverCalls.where((c) => c.page == 1), hasLength(1));
-    });
-
-    test('최근 목록이 있으면 실패해도 비우지 않고 재시도 알림, 재시도는 같은 장르로', () async {
-      final service = FakeTmdbMovieService(delay: Duration.zero);
-      final vm = MovieListViewModel(service);
-      await vm.loadInitial();
-      await vm.selectGenres([28, 12]);
-      final kept = vm.movies;
-
-      service.failDiscover = true;
       await vm.refresh();
-      expect(vm.status, MovieListLoadStatus.success);
-      expect(vm.movies, same(kept));
-      expect(vm.retryNoticeCount, 1);
-
-      service.failDiscover = false;
-      service.discoverCalls.clear();
-      await vm.retry();
-      expectCall(service.discoverCalls.first, 1, [28, 12]);
-      expect(vm.movies, isNot(same(kept)));
+      expectCall(service.discoverCalls.single, 1, [28]);
+      expect(vm.movies, hasLength(20));
+      expect(vm.paged.nextPage, 2);
     });
 
-    test('장르를 바꾸다 실패 후 취소하면 선택을 화면 목록에 맞게 되돌린다', () async {
-      final service = FakeTmdbMovieService(delay: Duration.zero);
-      final vm = MovieListViewModel(service);
-      await vm.loadInitial();
-      service.failDiscover = true;
-      await vm.selectGenre(18);
-      expect(vm.selectedGenreIds, [18]);
-      expect(vm.retryNoticeCount, 1);
-      vm.cancelRetry();
-      expect(vm.selectedGenreIds, isEmpty);
-    });
-
-    test('목록이 없을 때 실패하면 Error, 재시도로 Success', () async {
+    test('첫 page가 실패하면 Error와 안내 문구, 다시 시도로 Success', () async {
       final service = FakeTmdbMovieService(delay: Duration.zero)
         ..failDiscover = true;
       final vm = MovieListViewModel(service);
       await vm.loadInitial();
       expect(vm.status, MovieListLoadStatus.error);
+      expect(vm.message, contains('네트워크'));
       service.failDiscover = false;
-      await vm.retry();
+      await vm.refresh();
       expect(vm.status, MovieListLoadStatus.success);
+      expect(vm.message, isNull);
+    });
+
+    test('장르 목록 조회가 실패하면 Error이고 다시 시도하면 장르부터 다시 받는다', () async {
+      final service = FakeTmdbMovieService(delay: Duration.zero)..genres = [];
+      // 장르 조회 실패를 흉내 내려고 gate 대신 예외를 던지는 Service를 쓴다.
+      final failing = _GenreFailingService(service);
+      final vm = MovieListViewModel(failing);
+      await vm.loadInitial();
+      expect(vm.status, MovieListLoadStatus.error);
+      expect(vm.canChangeGenre, isFalse);
+      expect(service.discoverCalls, isEmpty);
+      failing.fail = false;
+      service.genres = testGenres;
+      await vm.refresh();
+      expect(vm.status, MovieListLoadStatus.success);
+      expect(vm.genres, isNotEmpty);
     });
 
     test('저장한 장르·정렬 복원, 주소 장르가 우선, 모르는 ID는 버림', () async {
@@ -272,4 +259,31 @@ void main() {
       expect(service.discoverCalls, hasLength(1));
     });
   });
+}
+
+/// 장르 목록 조회만 실패하는 Service(나머지는 감싼 Service에 맡긴다).
+class _GenreFailingService extends FakeTmdbMovieService {
+  _GenreFailingService(FakeTmdbMovieService inner)
+    : _inner = inner,
+      super(delay: Duration.zero);
+
+  final FakeTmdbMovieService _inner;
+  bool fail = true;
+
+  @override
+  Future<List<TmdbGenreDto>> fetchGenres() async {
+    if (fail) throw FakeTmdbMovieService.failure('/genre/movie/list');
+    return _inner.fetchGenres();
+  }
+
+  @override
+  Future<TmdbMoviePageDto> discoverMovies({
+    required int page,
+    List<int>? genreIds,
+    CancelToken? cancelToken,
+  }) => _inner.discoverMovies(
+    page: page,
+    genreIds: genreIds,
+    cancelToken: cancelToken,
+  );
 }

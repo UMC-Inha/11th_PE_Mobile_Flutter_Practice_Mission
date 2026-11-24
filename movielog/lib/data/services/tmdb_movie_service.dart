@@ -7,7 +7,7 @@ import 'package:movielog/data/models/tmdb_movie_page.dart';
 ///
 /// HTTP 요청과 JSON → DTO 변환만 한다. 상태를 갖지 않으므로(stateless)
 /// 여러 ViewModel이 인스턴스 하나를 함께 쓴다.
-/// "인기 5개", "최대 30개", "선택된 장르"는 화면 정책이므로 ViewModel이 정한다.
+/// "인기 5개", "선택된 장르", "어느 page까지"는 화면 정책이므로 ViewModel이 정한다.
 class TmdbMovieService {
   TmdbMovieService(this._dio);
 
@@ -40,6 +40,24 @@ class TmdbMovieService {
           'with_genres': withGenresQuery(genreIds),
       },
       cancelToken: cancelToken,
+    );
+    return TmdbMoviePageDto.fromJson(response.data!);
+  }
+
+  /// 제목 검색(`/search/movie`). 빈 검색어로는 호출하지 않는다(ViewModel이 먼저 막는다).
+  /// TMDB `page`는 1~500이다.
+  Future<TmdbMoviePageDto> searchMovies({
+    required int page,
+    required String query,
+  }) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/search/movie',
+      queryParameters: {
+        'query': query,
+        'language': 'ko-KR',
+        'page': page,
+        'include_adult': false,
+      },
     );
     return TmdbMoviePageDto.fromJson(response.data!);
   }

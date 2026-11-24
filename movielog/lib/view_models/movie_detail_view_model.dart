@@ -5,6 +5,7 @@ import 'package:movielog/data/models/tmdb_movie_dto.dart';
 import 'package:movielog/data/services/rating_api_service.dart';
 import 'package:movielog/data/services/tmdb_movie_service.dart';
 import 'package:movielog/view_models/auth_view_model.dart';
+import 'package:movielog/view_models/favorite_detail_view_model.dart';
 import 'package:movielog/view_models/load_error_message.dart';
 import 'package:movielog/view_models/rating_error.dart';
 import 'package:movielog/view_models/session_ratings.dart';
@@ -15,7 +16,7 @@ enum MovieDetailLoadStatus { loading, success, error }
 /// 영화 상세 ViewModel. 목록에서 넘겨받은 DTO가 있으면 바로 쓰고,
 /// 주소로 바로 열었으면 Route의 TMDB `movieId`로 Movie Details를 조회한다.
 ///
-/// 이 화면에서는 평점 **등록**만 한다. 요청에 memberId가 없고, 누구의 평점인지는 토큰이 알려 준다.
+/// 이 화면에서는 평점 **등록**만 한다(즐겨찾기는 [FavoriteDetailViewModel]이 맡는다). 요청에 memberId가 없고, 누구의 평점인지는 토큰이 알려 준다.
 /// 등록 응답으로 받은 평점 객체는 [SessionRatings]에 더해 마이페이지에서 수정·삭제하게 한다.
 class MovieDetailViewModel extends ChangeNotifier {
   MovieDetailViewModel(
@@ -37,8 +38,6 @@ class MovieDetailViewModel extends ChangeNotifier {
   TmdbMovieDto? movie;
   MovieDetailLoadStatus status;
   String? message;
-
-  bool isFavorite = false;
 
   /// 이 화면에서 서버 저장까지 마친 평점(1~5). 아직 남기지 않았으면 null.
   MemberRatingDto? myRating;
@@ -66,11 +65,6 @@ class MovieDetailViewModel extends ChangeNotifier {
       status = MovieDetailLoadStatus.error;
       message = loadErrorMessage(error, fallback: '영화 정보를 불러오지 못했어요.');
     }
-    notifyListeners();
-  }
-
-  void toggleFavorite() {
-    isFavorite = !isFavorite;
     notifyListeners();
   }
 

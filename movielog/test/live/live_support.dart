@@ -92,6 +92,15 @@ class CachingTmdbService implements TmdbMovieService {
   );
 
   @override
+  Future<TmdbMoviePageDto> searchMovies({
+    required int page,
+    required String query,
+  }) => _get(
+    'search:$page:$query',
+    () => _real.searchMovies(page: page, query: query),
+  );
+
+  @override
   Future<List<TmdbGenreDto>> fetchGenres() =>
       _get('genres', () => _real.fetchGenres());
 

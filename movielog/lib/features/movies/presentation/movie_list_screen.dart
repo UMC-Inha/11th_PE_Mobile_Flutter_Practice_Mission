@@ -8,16 +8,19 @@ import 'package:movielog/features/movies/presentation/widgets/genre_filter_sheet
 import 'package:movielog/features/movies/presentation/widgets/movie_grid.dart';
 import 'package:movielog/features/movies/presentation/widgets/movie_list_states.dart';
 import 'package:movielog/features/movies/presentation/widgets/movie_list_tile.dart';
-import 'package:movielog/features/movies/presentation/widgets/retry_dialog.dart';
+import 'package:movielog/features/movies/presentation/widgets/movie_page_footer.dart';
 import 'package:movielog/view_models/movie_list_view_model.dart';
 import 'package:provider/provider.dart';
 
 const filterButtonKey = Key('filterButton');
 const viewModeButtonKey = Key('viewModeButton');
+const movieSearchButtonKey = Key('movieSearchButton');
 const allGenreChipKey = Key('genreChip-all');
 
 /// 영화 목록 View. 상태를 직접 만들지 않고 MovieListViewModel을 그대로 그린다.
 /// 남은 화면 상태는 격자/리스트 보기 전환 하나뿐이다.
+///
+/// 첫 page만 보여 주고, 맨 아래 footer의 "더 보기"로 다음 page를 이어 붙인다.
 class MovieListScreen extends StatefulWidget {
   const MovieListScreen({super.key});
 
@@ -27,45 +30,6 @@ class MovieListScreen extends StatefulWidget {
 
 class _MovieListScreenState extends State<MovieListScreen> {
   bool _isGrid = true;
-  MovieListViewModel? _viewModel;
-  int _seenRetryNotice = 0;
-  bool _dialogOpen = false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final viewModel = context.read<MovieListViewModel>();
-    if (identical(viewModel, _viewModel)) return;
-    _viewModel?.removeListener(_onViewModelChanged);
-    _viewModel = viewModel..addListener(_onViewModelChanged);
-    _seenRetryNotice = viewModel.retryNoticeCount;
-  }
-
-  @override
-  void dispose() {
-    _viewModel?.removeListener(_onViewModelChanged);
-    super.dispose();
-  }
-
-  /// 최근 목록을 유지한 채 실패하면(retryNoticeCount 증가) 재시도 Dialog를 한 번 띄운다.
-  void _onViewModelChanged() {
-    final viewModel = _viewModel;
-    if (viewModel == null || !mounted) return;
-    if (viewModel.retryNoticeCount == _seenRetryNotice || _dialogOpen) return;
-    _seenRetryNotice = viewModel.retryNoticeCount;
-    _dialogOpen = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      final retry = await showRetryDialog(context, message: viewModel.message);
-      _dialogOpen = false;
-      if (!mounted) return;
-      if (retry) {
-        await viewModel.retry();
-      } else {
-        viewModel.cancelRetry();
-      }
-    });
-  }
 
   Future<void> _openFilter(MovieListViewModel viewModel) async {
     final result = await showGenreFilterSheet(
@@ -116,6 +80,13 @@ class _MovieListScreenState extends State<MovieListScreen> {
               ),
             ),
           ),
+          // 검색 화면(/movies/search)은 하단 NavigationBar 위로 새로 열린다.
+          IconButton(
+            key: movieSearchButtonKey,
+            tooltip: '영화 검색',
+            onPressed: () => context.push(AppRoutes.movieSearch),
+            icon: const Icon(Icons.search),
+          ),
         ],
       ),
       body: Consumer<MovieListViewModel>(
@@ -123,10 +94,7 @@ class _MovieListScreenState extends State<MovieListScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _GenreChips(viewModel: viewModel),
-            if (viewModel.isRefreshing)
-              const LinearProgressIndicator(minHeight: 2)
-            else
-              const SizedBox(height: 2),
+            const SizedBox(height: 2),
             Expanded(child: _body(viewModel)),
           ],
         ),
@@ -141,7 +109,7 @@ class _MovieListScreenState extends State<MovieListScreen> {
       MovieListLoadStatus.error => MovieListError(
         message: viewModel.message,
         timedOut: viewModel.timedOut,
-        onRetry: viewModel.retry,
+        onRetry: viewModel.refresh,
       ),
       MovieListLoadStatus.empty => _refreshable(
         viewModel,
@@ -157,12 +125,14 @@ class _MovieListScreenState extends State<MovieListScreen> {
     };
   }
 
-  /// Pull to Refresh. Loading·새로고침 중에는 제스처를 받지 않는다.
+  /// Pull to Refresh. 현재 장르를 유지한 채 page 1부터 다시 받는다.
+  /// 처음 받는 중에는 제스처를 받지 않는다.
   Widget _refreshable(MovieListViewModel viewModel, Widget child) {
     return RefreshIndicator(
       key: const Key('movieRefresh'),
       notificationPredicate: (notification) =>
-          !viewModel.isBusy && defaultScrollNotificationPredicate(notification),
+          !viewModel.paged.isLoadingFirstPage &&
+          defaultScrollNotificationPredicate(notification),
       onRefresh: viewModel.refresh,
       child: child,
     );
@@ -170,23 +140,28 @@ class _MovieListScreenState extends State<MovieListScreen> {
 
   Widget _movies(MovieListViewModel viewModel) {
     final movies = viewModel.visibleMovies;
+    final footer = MoviePageFooter(viewModel: viewModel.paged);
     if (_isGrid) {
       return MovieGrid(
         movies: movies,
         onTap: _openDetail,
         genreNameOf: viewModel.primaryGenreName,
+        footer: footer,
       );
     }
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-      itemCount: movies.length,
+      itemCount: movies.length + 1,
       separatorBuilder: (context, index) => const Divider(height: 24),
-      itemBuilder: (context, index) => MovieListTile(
-        movie: movies[index],
-        genreName: viewModel.primaryGenreName(movies[index]),
-        onTap: () => _openDetail(movies[index]),
-      ),
+      itemBuilder: (context, index) {
+        if (index == movies.length) return footer;
+        return MovieListTile(
+          movie: movies[index],
+          genreName: viewModel.primaryGenreName(movies[index]),
+          onTap: () => _openDetail(movies[index]),
+        );
+      },
     );
   }
 }
@@ -198,7 +173,8 @@ class _GenreChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 요청 중에는 Chip을 눌러도 장르가 바뀌지 않게 onSelected를 끈다.
+    // 장르 목록을 받는 중에는 Chip을 눌러도 바뀌지 않게 onSelected를 끈다.
+    // 영화 page를 받는 중에는 바꿀 수 있다(이전 장르의 늦은 응답은 ViewModel이 버린다).
     final enabled = viewModel.canChangeGenre;
     final selected = viewModel.selectedGenreIds;
     return SizedBox(

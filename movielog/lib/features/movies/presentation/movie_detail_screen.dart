@@ -3,20 +3,36 @@ import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movielog/core/theme/app_theme.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
+import 'package:movielog/features/movies/presentation/widgets/favorite_button.dart';
 import 'package:movielog/features/movies/presentation/widgets/movie_card.dart';
 import 'package:movielog/features/rating/presentation/widgets/movie_rating_dialog.dart';
+import 'package:movielog/view_models/favorite_detail_view_model.dart';
 import 'package:movielog/view_models/movie_detail_view_model.dart';
 import 'package:movielog/view_models/submit_status.dart';
 import 'package:movielog/widgets/tmdb_poster_image.dart';
 import 'package:provider/provider.dart';
 
-const favoriteButtonKey = Key('favoriteButton');
 const rateButtonKey = Key('rateButton');
 const tmdbIdLabelKey = Key('tmdbIdLabel');
 const myRatingLabelKey = Key('myRatingLabel');
+const movieTitleKey = Key('movieTitle');
 
-class MovieDetailScreen extends StatelessWidget {
+class MovieDetailScreen extends StatefulWidget {
   const MovieDetailScreen({super.key});
+
+  @override
+  State<MovieDetailScreen> createState() => _MovieDetailScreenState();
+}
+
+class _MovieDetailScreenState extends State<MovieDetailScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // 화면이 처음 만들어질 때 서버의 즐겨찾기 여부를 한 번만 조회한다(build에서 조회하지 않는다).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<FavoriteDetailViewModel>().load();
+    });
+  }
 
   Future<void> _rate(
     BuildContext context,
@@ -45,23 +61,6 @@ class MovieDetailScreen extends StatelessWidget {
       );
   }
 
-  void _toggleFavorite(BuildContext context, MovieDetailViewModel viewModel) {
-    viewModel.toggleFavorite();
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            viewModel.isFavorite ? '즐겨찾기에 추가했어요.' : '즐겨찾기에서 삭제했어요.',
-          ),
-          action: SnackBarAction(
-            label: '되돌리기',
-            onPressed: viewModel.toggleFavorite,
-          ),
-        ),
-      );
-  }
-
   @override
   Widget build(BuildContext context) {
     final viewModel = context.watch<MovieDetailViewModel>();
@@ -73,18 +72,6 @@ class MovieDetailScreen extends StatelessWidget {
           onPressed: () =>
               context.canPop() ? context.pop() : context.go('/movies'),
         ),
-        actions: [
-          if (movie != null)
-            IconButton(
-              key: favoriteButtonKey,
-              tooltip: viewModel.isFavorite ? '즐겨찾기 삭제' : '즐겨찾기 추가',
-              onPressed: () => _toggleFavorite(context, viewModel),
-              icon: Icon(
-                viewModel.isFavorite ? Icons.bookmark : Icons.bookmark_border,
-                color: viewModel.isFavorite ? AppColors.primary : null,
-              ),
-            ),
-        ],
       ),
       body: switch (viewModel.status) {
         MovieDetailLoadStatus.loading => const Center(
@@ -181,21 +168,41 @@ class _PosterHeader extends StatelessWidget {
             width: double.infinity,
           ),
         ),
-        const SizedBox(height: 18),
-        Text(
-          movie.title,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: AppColors.text,
-            fontSize: 26,
-            fontWeight: FontWeight.w800,
-          ),
+        const SizedBox(height: 14),
+        // 제목·개봉 연도 오른쪽에 즐겨찾기(북마크) 버튼을 둔다.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      movie.title,
+                      key: movieTitleKey,
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    // 개봉일이 없으면 연도를 표시하지 않는다.
+                    if (year != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        '$year 개봉',
+                        style: const TextStyle(color: AppColors.mutedText),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const FavoriteButton(),
+          ],
         ),
-        // 개봉일이 없으면 연도를 표시하지 않는다.
-        if (year != null) ...[
-          const SizedBox(height: 6),
-          Text('$year 개봉', style: const TextStyle(color: AppColors.mutedText)),
-        ],
       ],
     );
   }

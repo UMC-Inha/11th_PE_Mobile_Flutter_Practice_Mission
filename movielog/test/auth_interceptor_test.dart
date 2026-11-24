@@ -43,6 +43,50 @@ void main() {
       }
     });
 
+    test('9주차 보호 경로: 즐겨찾기 등록·목록·여부·해제, 영화 기록 저장에도 토큰을 붙인다', () async {
+      await auth.post<Object?>('/favorites', data: {'movieId': 550});
+      await auth.get<Object?>('/favorites');
+      await auth.get<Object?>('/favorites/550');
+      await auth.delete<Object?>('/favorites/550');
+      await auth.post<Object?>(
+        '/movie-records',
+        data: {'movieId': 550, 'score': 4, 'addToFavorites': true},
+      );
+
+      expect(adapter.requests, hasLength(5));
+      for (var i = 0; i < 5; i++) {
+        expect(
+          sentAuthorization(i),
+          'Bearer $_jwt',
+          reason: '${adapter.requests[i].method} ${adapter.requests[i].path}',
+        );
+      }
+    });
+
+    test('9주차 보호 경로와 비슷한 경로(/favoritesx, /movie-records/1)에는 붙이지 않는다', () async {
+      await auth.get<Object?>('/favoritesx');
+      await auth.get<Object?>('/favorite');
+      await auth.get<Object?>('/movie-records/1');
+      await auth.get<Object?>('/movie-recordsx');
+      for (var i = 0; i < adapter.requests.length; i++) {
+        expect(sentAuthorization(i), isNull, reason: adapter.requests[i].path);
+      }
+    });
+
+    test('9주차 보호 경로라도 TMDB·외부 URL로 가는 요청에는 붙이지 않는다', () async {
+      await auth.get<Object?>('https://api.themoviedb.org/3/favorites');
+      await auth.get<Object?>('http://evil.example/favorites/550');
+      await auth.post<Object?>('http://localhost:3001/favorites');
+      await auth.post<Object?>('https://evil.example/movie-records');
+      for (var i = 0; i < adapter.requests.length; i++) {
+        expect(
+          sentAuthorization(i),
+          isNull,
+          reason: '${adapter.requests[i].uri}',
+        );
+      }
+    });
+
     test('로그인·중복 확인·회원가입·유저별 평점 조회(공개)에는 붙이지 않는다', () async {
       await auth.post<Object?>('/auth/login', data: {'email': 'a@b.com'});
       await auth.get<Object?>('/members/nickname/케빈');
@@ -149,6 +193,8 @@ void main() {
       )..httpClientAdapter = tmdbAdapter;
       await tmdb.get<Object?>('/members/me'); // 보호 경로 모양이어도
       await tmdb.get<Object?>('/ratings');
+      await tmdb.get<Object?>('/favorites/550'); // 9주차 보호 경로 모양이어도
+      await tmdb.get<Object?>('/movie-records');
       for (final request in tmdbAdapter.requests) {
         expect(request.headers['Authorization'], 'Bearer tmdb-read-token');
         expect('${request.headers}', isNot(contains(_jwt)));
@@ -216,6 +262,40 @@ void main() {
       expect(all, isNot(contains(_jwt)));
       expect(all, isNot(contains('eyJ')));
       expect(all, isNot(contains('Secret1234!')));
+    });
+
+    test('9주차 즐겨찾기·영화 기록 요청의 로그에도 JWT 원문이 없다(Bearer ***만 남는다)', () async {
+      final logs = <String>[];
+      final stub = StubAdapter(
+        (options) => (
+          200,
+          {
+            'isSuccess': true,
+            'code': 'COMMON200',
+            'message': 'ok',
+            'result': {'isFavorite': true},
+          },
+        ),
+      );
+      final protected = createAuthMovieLogApiClient(
+        storage,
+        baseUrl: _base,
+        enableLogging: true,
+        log: logs.add,
+      )..httpClientAdapter = stub;
+      await protected.post<Object?>('/favorites', data: {'movieId': 550});
+      await protected.get<Object?>('/favorites/550');
+      await protected.delete<Object?>('/favorites/550');
+      await protected.post<Object?>(
+        '/movie-records',
+        data: {'movieId': 550, 'score': 4, 'addToFavorites': true},
+      );
+      final all = logs.join('\n');
+      expect(all, contains('/favorites/550'));
+      expect(all, contains('/movie-records'));
+      expect(all, contains('Bearer ***'));
+      expect(all, isNot(contains(_jwt)));
+      expect(all, isNot(contains('eyJ')));
     });
 
     test('JWT 모양이 아닌 값도 민감한 키(accessToken·password·token)면 가린다', () async {

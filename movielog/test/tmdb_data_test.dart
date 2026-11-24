@@ -209,6 +209,22 @@ void main() {
       expect(queries[3], containsPair('language', 'ko-KR'));
     });
 
+    test('Search: query·page를 보내고 성인 콘텐츠는 제외한다(9주차)', () async {
+      await service.searchMovies(page: 1, query: '어벤져스');
+      await service.searchMovies(page: 3, query: '매트릭스 리로디드');
+      final first = adapter.requests[0];
+      expect(first.path, '/search/movie');
+      expect(first.headers['Authorization'], 'Bearer test-token');
+      expect(first.queryParameters, {
+        'query': '어벤져스',
+        'language': 'ko-KR',
+        'page': 1,
+        'include_adult': false,
+      });
+      expect(adapter.requests[1].queryParameters['page'], 3);
+      expect(adapter.requests[1].queryParameters['query'], '매트릭스 리로디드');
+    });
+
     test('Genre API는 language=ko', () async {
       final genres = await service.fetchGenres();
       expect(genres.single.name, '액션');
