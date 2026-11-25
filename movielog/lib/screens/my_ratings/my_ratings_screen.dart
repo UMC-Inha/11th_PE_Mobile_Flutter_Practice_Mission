@@ -33,14 +33,6 @@ class MyRatingsScreen extends StatelessWidget {
               MyRatingsLoadStatus.idle ||
               MyRatingsLoadStatus.loading => const _RatingsLoading(),
               MyRatingsLoadStatus.empty => const _RatingsEmpty(),
-              // 저장은 성공했지만 재조회만 실패했다면 그 사실을 따로 안내하고 GET만 다시 시도합니다.
-              MyRatingsLoadStatus.error => _RatingsError(
-                message:
-                    viewModel.refreshWarning ??
-                    viewModel.message ??
-                    '평점을 불러오지 못했습니다.',
-                onRetry: viewModel.load,
-              ),
               MyRatingsLoadStatus.success => _RatingsList(viewModel: viewModel),
             };
           },
@@ -81,37 +73,6 @@ class _RatingsEmpty extends StatelessWidget {
   }
 }
 
-class _RatingsError extends StatelessWidget {
-  const _RatingsError({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, size: 48, color: AppColors.error),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            // 화면 가운데의 단독 버튼이므로 고정 너비를 사용합니다.
-            MovieLogButton(label: '다시 시도', width: 120, onPressed: onRetry),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _RatingsList extends StatelessWidget {
   const _RatingsList({required this.viewModel});
 
@@ -124,10 +85,6 @@ class _RatingsList extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          '학습용 회원(memberId ${viewModel.memberId})이 등록한 평점입니다.',
-          style: AppTextStyles.bodySmall,
-        ),
         if (message != null) ...[
           const SizedBox(height: 8),
           Text(
@@ -137,7 +94,7 @@ class _RatingsList extends StatelessWidget {
         ],
         const SizedBox(height: 16),
         for (final entry in viewModel.ratings) ...[
-          // 이 목록은 현재 학습용 회원의 평점만 조회하므로 모두 본인이 작성한 평점입니다.
+          // 이 목록은 현재 세션에서 등록 response로 받은 내 평점입니다.
           MyRatingCard(
             entry: entry,
             onEdit: () => _onEditPressed(context, viewModel, entry.rating),

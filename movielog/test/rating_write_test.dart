@@ -14,27 +14,43 @@ import 'package:movielog/screens/my_ratings/my_ratings_screen.dart';
 import 'package:movielog/theme/app_theme.dart';
 import 'package:movielog/view_models/movie_detail_view_model.dart';
 import 'package:movielog/view_models/my_ratings_view_model.dart';
+import 'package:movielog/view_models/session_rating_store.dart';
 
+import 'fakes/fake_auth.dart';
 import 'fakes/fake_rating_api_service.dart';
 import 'fakes/fake_tmdb_movie_service.dart';
 
-Widget _detailApp(FakeRatingApiService service, {int? memberId = 7}) {
+Future<Widget> _detailApp(FakeRatingApiService service) async {
   final movie = FakeTmdbMovieService().movie(550);
+  final auth = await signedInAuth();
+  final store = SessionRatingStore(auth);
   return MaterialApp(
     theme: AppTheme.light,
     home: ChangeNotifierProvider<MovieDetailViewModel>(
-      create: (_) => MovieDetailViewModel(service, memberId, movie),
+      create: (_) => MovieDetailViewModel(service, auth, store, movie),
       child: const MovieDetailScreen(),
     ),
   );
 }
 
-Widget _myRatingsApp(FakeRatingApiService service) {
+/// 현재 세션에서 service의 평점을 등록한 상태로 시작합니다.
+Future<(MyRatingsViewModel, SessionRatingStore)> _myRatings(
+  FakeRatingApiService service,
+) async {
+  final auth = await signedInAuth();
+  final store = SessionRatingStore(auth);
+  for (final rating in service.ratings) {
+    store.upsert(rating, sessionVersion: auth.sessionVersion);
+  }
+  return (MyRatingsViewModel(service, FakeTmdbMovieService(), auth, store), store);
+}
+
+Future<Widget> _myRatingsApp(FakeRatingApiService service) async {
+  final (viewModel, _) = await _myRatings(service);
   return MaterialApp(
     theme: AppTheme.light,
     home: ChangeNotifierProvider<MyRatingsViewModel>(
-      create: (_) =>
-          MyRatingsViewModel(service, FakeTmdbMovieService(), 7)..load(),
+      create: (_) => viewModel..load(),
       child: const MyRatingsScreen(),
     ),
   );
@@ -101,18 +117,19 @@ void main() {
   });
 
   group('MovieDetailViewModel', () {
-    test('TMDB id를 movieId로, 세션 memberId를 path로 등록한다', () async {
+    test('TMDB id를 movieId로 등록하고 body에 memberId를 넣지 않는다', () async {
       final service = FakeRatingApiService();
+      final auth = await signedInAuth();
       final viewModel = MovieDetailViewModel(
         service,
-        7,
+        auth,
+        SessionRatingStore(auth),
         FakeTmdbMovieService().movie(550),
       );
       await viewModel.createRating(score: 4, comment: '재밌어요');
 
       expect(viewModel.submitStatus, SubmitStatus.success);
       expect(service.createRequests.single, {
-        'memberId': 7,
         'movieId': 550,
         'score': 4,
         'comment': '재밌어요',
@@ -123,9 +140,11 @@ void main() {
       final service = FakeRatingApiService()
         ..writeFailStatus = 409
         ..writeFailMessage = '이미 이 영화에 평점을 남기셨습니다.';
+      final auth = await signedInAuth();
       final viewModel = MovieDetailViewModel(
         service,
-        7,
+        auth,
+        SessionRatingStore(auth),
         FakeTmdbMovieService().movie(550),
       );
       await viewModel.createRating(score: 4);
@@ -134,37 +153,26 @@ void main() {
       expect(viewModel.submitMessage, '이미 이 영화에 평점을 남기셨습니다.');
     });
 
-    test('회원가입 전이면 요청을 보내지 않는다', () async {
-      final service = FakeRatingApiService();
-      final viewModel = MovieDetailViewModel(
-        service,
-        null,
-        FakeTmdbMovieService().movie(550),
-      );
-      await viewModel.createRating(score: 4);
-
-      expect(viewModel.canRate, isFalse);
-      expect(service.createRequests, isEmpty);
-    });
   });
 
   group('MyRatingsViewModel', () {
-    test('수정 성공 뒤 목록을 다시 조회한다', () async {
+    test('수정 성공 뒤 수정 result로 목록을 갱신한다', () async {
       final service = FakeRatingApiService(ratings: [sampleRating()]);
-      final viewModel = MyRatingsViewModel(service, FakeTmdbMovieService(), 7);
+      final (viewModel, _) = await _myRatings(service);
       await viewModel.load();
 
       await viewModel.updateRating(ratingId: 1, score: 3, comment: '다시 보니 보통');
-      expect(service.fetchCount, 2);
+      await viewModel.load();
       expect(viewModel.ratings.single.rating.score, 3);
       expect(viewModel.ratings.single.rating.comment, '다시 보니 보통');
     });
 
-    test('403은 권한 문구로 실패를 알리고 목록을 서버 상태와 맞춘다', () async {
+    test('403은 권한 문구로 실패를 알리고 목록은 그대로 둔다', () async {
       final service = FakeRatingApiService(ratings: [sampleRating()])
         ..writeFailStatus = 403
+        ..writeFailCode = 'RATING403_1'
         ..writeFailMessage = '본인이 작성한 평점만 수정하거나 삭제할 수 있습니다.';
-      final viewModel = MyRatingsViewModel(service, FakeTmdbMovieService(), 7);
+      final (viewModel, store) = await _myRatings(service);
       await viewModel.load();
 
       await expectLater(
@@ -177,49 +185,16 @@ void main() {
           ),
         ),
       );
-      expect(service.fetchCount, 2);
+      expect(store.ratings, hasLength(1));
     });
 
-    test('400·409는 다시 조회하지 않는다', () async {
-      final service = FakeRatingApiService(ratings: [sampleRating()])
-        ..writeFailStatus = 400
-        ..writeFailMessage = '별점은 5점 이하여야 합니다.';
-      final viewModel = MyRatingsViewModel(service, FakeTmdbMovieService(), 7);
-      await viewModel.load();
-
-      await expectLater(
-        viewModel.updateRating(ratingId: 1, score: 5),
-        throwsA(isA<RatingWriteException>()),
-      );
-      expect(service.fetchCount, 1);
-    });
-
-    test('저장은 성공하고 재조회만 실패하면 저장 실패로 던지지 않고 경고만 남긴다', () async {
-      final service = FakeRatingApiService(ratings: [sampleRating()])
-        ..failNextFetchAfterWrite = true;
-      final viewModel = MyRatingsViewModel(service, FakeTmdbMovieService(), 7);
-      await viewModel.load();
-
-      await viewModel.deleteRating(1);
-      expect(service.ratings, isEmpty);
-      expect(viewModel.status, MyRatingsLoadStatus.error);
-      expect(viewModel.refreshWarning, contains('저장은 완료됐지만'));
-
-      // GET만 다시 시도하면 경고가 사라지고 Empty가 됩니다.
-      service.failStatusCode = null;
-      service.failNextFetchAfterWrite = false;
-      await viewModel.load();
-      expect(viewModel.status, MyRatingsLoadStatus.empty);
-      expect(viewModel.refreshWarning, isNull);
-      expect(service.deleteRequests, [1]);
-    });
   });
 
   group('영화 상세 평점 등록 화면', () {
     testWidgets('별점·코멘트를 입력해 등록하면 Dialog가 닫히고 성공 Snackbar가 보인다', (tester) async {
       _usePhoneSize(tester);
       final service = FakeRatingApiService();
-      await tester.pumpWidget(_detailApp(service));
+      await tester.pumpWidget(await tester.runAsync(() => _detailApp(service)) as Widget);
 
       await tester.tap(find.text('평점 남기기'));
       await tester.pumpAndSettle();
@@ -256,7 +231,7 @@ void main() {
       final service = FakeRatingApiService()
         ..writeFailStatus = 409
         ..writeFailMessage = '이미 이 영화에 평점을 남기셨습니다.';
-      await tester.pumpWidget(_detailApp(service));
+      await tester.pumpWidget(await tester.runAsync(() => _detailApp(service)) as Widget);
 
       await tester.tap(find.text('평점 남기기'));
       await tester.pumpAndSettle();
@@ -276,19 +251,6 @@ void main() {
       expect(find.textContaining('평점이 등록되지 않았어요.'), findsOneWidget);
     });
 
-    testWidgets('회원가입 전에는 평점 남기기 버튼이 비활성화되고 안내가 보인다', (tester) async {
-      _usePhoneSize(tester);
-      await tester.pumpWidget(_detailApp(FakeRatingApiService(), memberId: null));
-
-      expect(find.text('학습용 회원가입을 완료하면 평점을 남길 수 있어요.'), findsOneWidget);
-      final button = tester.widget<ButtonStyleButton>(
-        find.ancestor(
-          of: find.text('평점 남기기'),
-          matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
-        ),
-      );
-      expect(button.onPressed, isNull);
-    });
   });
 
   group('내가 등록한 평점 수정·삭제 화면', () {
@@ -297,7 +259,7 @@ void main() {
       final service = FakeRatingApiService(
         ratings: [sampleRating(score: 5, comment: '최고의 영화!')],
       );
-      await tester.pumpWidget(_myRatingsApp(service));
+      await tester.pumpWidget(await tester.runAsync(() => _myRatingsApp(service)) as Widget);
       await tester.pumpAndSettle();
 
       await tester.tap(find.widgetWithText(OutlinedButton, '수정'));
@@ -330,7 +292,7 @@ void main() {
     testWidgets('코멘트가 null인 평점은 빈 칸으로 시작하고, 그대로 저장해도 null을 보낸다', (tester) async {
       _usePhoneSize(tester);
       final service = FakeRatingApiService(ratings: [sampleRating(comment: null)]);
-      await tester.pumpWidget(_myRatingsApp(service));
+      await tester.pumpWidget(await tester.runAsync(() => _myRatingsApp(service)) as Widget);
       await tester.pumpAndSettle();
 
       await tester.tap(find.widgetWithText(OutlinedButton, '수정'));
@@ -347,7 +309,7 @@ void main() {
     testWidgets('삭제 확인에서 취소하면 요청이 없고, 삭제하면 마지막 항목 뒤 Empty UI를 보여준다', (tester) async {
       _usePhoneSize(tester);
       final service = FakeRatingApiService(ratings: [sampleRating()]);
-      await tester.pumpWidget(_myRatingsApp(service));
+      await tester.pumpWidget(await tester.runAsync(() => _myRatingsApp(service)) as Widget);
       await tester.pumpAndSettle();
 
       await tester.tap(find.widgetWithText(OutlinedButton, '삭제'));
@@ -375,28 +337,5 @@ void main() {
       expect(find.text('아직 등록된 평점이 없어요.'), findsOneWidget);
     });
 
-    testWidgets('삭제 성공 뒤 재조회만 실패하면 조회 재시도 안내를 보여주고 GET만 다시 시도한다', (tester) async {
-      _usePhoneSize(tester);
-      final service = FakeRatingApiService(ratings: [sampleRating()])
-        ..failNextFetchAfterWrite = true;
-      await tester.pumpWidget(_myRatingsApp(service));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.widgetWithText(OutlinedButton, '삭제'));
-      await tester.pumpAndSettle();
-      await tester.tap(_dialogButton('삭제'));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('저장은 완료됐지만 목록을 불러오지 못했습니다.'), findsOneWidget);
-
-      service
-        ..failStatusCode = null
-        ..failNextFetchAfterWrite = false;
-      await tester.tap(find.text('다시 시도'));
-      await tester.pumpAndSettle();
-
-      expect(service.deleteRequests, [1]); // DELETE는 다시 보내지 않습니다.
-      expect(find.text('아직 등록된 평점이 없어요.'), findsOneWidget);
-    });
   });
 }

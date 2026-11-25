@@ -54,7 +54,7 @@ class MyRatingCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  movie?.title ?? '영화 정보 없음',
+                  movie?.title ?? '영화 #${rating.movieId}',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.titleMedium.copyWith(
