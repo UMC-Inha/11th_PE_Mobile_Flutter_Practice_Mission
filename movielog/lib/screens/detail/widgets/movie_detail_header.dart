@@ -16,7 +16,9 @@ class MovieDetailHeader extends StatelessWidget {
   });
 
   final TmdbMovieDto movie;
-  final double? myRating;
+
+  /// 내가 남긴 서버 평점(1~5 정수)입니다.
+  final int? myRating;
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +52,9 @@ class MovieDetailHeader extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   releaseYear,
-                  style: AppTextStyles.bodySmall.copyWith(color: AppColors.darkGray),
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: AppColors.darkGray,
+                  ),
                 ),
               ],
               const SizedBox(height: 12),

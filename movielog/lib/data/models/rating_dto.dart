@@ -1,4 +1,5 @@
-/// v5 `GET /v5/members/{memberId}/ratings` 응답 배열의 평점 하나입니다.
+/// `GET /v6/members/{memberId}/ratings` 응답 배열의 평점 하나입니다.
+/// 영화 제목·포스터는 포함하지 않으므로 movieId로 TMDB 영화와 연결합니다.
 class RatingDto {
   const RatingDto({
     required this.ratingId,
@@ -17,10 +18,10 @@ class RatingDto {
   final DateTime createdAt;
 
   factory RatingDto.fromJson(Map<String, dynamic> json) => RatingDto(
-        ratingId: (json['ratingId'] as num).toInt(),
-        movieId: (json['movieId'] as num).toInt(),
-        score: (json['score'] as num).toInt(),
-        comment: json['comment'] as String?,
-        createdAt: DateTime.parse(json['createdAt'] as String),
-      );
+    ratingId: (json['ratingId'] as num).toInt(),
+    movieId: (json['movieId'] as num).toInt(),
+    score: (json['score'] as num).toInt(),
+    comment: json['comment'] as String?,
+    createdAt: DateTime.parse(json['createdAt'] as String),
+  );
 }
