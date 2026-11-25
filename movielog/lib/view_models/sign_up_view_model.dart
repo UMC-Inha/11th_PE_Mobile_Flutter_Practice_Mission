@@ -1,6 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:movielog/data/models/create_member_request.dart';
 import 'package:movielog/data/services/movielog_api_service.dart';
 import 'package:movielog/view_models/load_error_message.dart';
+import 'package:movielog/view_models/submit_status.dart';
+import 'package:movielog/view_models/write_error_message.dart';
 
 /// 중복 확인 한 칸(닉네임 또는 이메일)의 상태.
 ///
@@ -11,12 +15,13 @@ import 'package:movielog/view_models/load_error_message.dart';
 /// - error: 통신 자체가 실패한 상태(DioException, 타임아웃 등)
 enum CheckStatus { idle, checking, available, duplicated, error }
 
-/// 회원가입 화면 ViewModel. 닉네임·이메일 중복 체크를 자체 백엔드에 묻는다.
+/// 회원가입 화면 ViewModel. 닉네임·이메일 중복 체크를 자체 백엔드에 묻고,
+/// 모든 입력이 유효하면 회원가입 POST를 보낸다.
 ///
 /// 두 입력칸이 같은 화면에 있어도 상태는 칸마다 따로 가진다.
 /// 하나로 합치면 닉네임 결과와 이메일 결과가 서로 영향을 주기 때문이다.
 class SignUpViewModel extends ChangeNotifier {
-  SignUpViewModel(MovieLogApiService api) {
+  SignUpViewModel(MovieLogApiService api) : _api = api {
     _nickname = _FieldCheck(
       request: (value) => api.checkNickname(value).then((r) => r.available),
       duplicatedMessage: '이미 사용 중인 닉네임이에요.',
@@ -31,9 +36,24 @@ class SignUpViewModel extends ChangeNotifier {
     );
   }
 
+  final MovieLogApiService _api;
   late final _FieldCheck _nickname;
   late final _FieldCheck _email;
   bool _disposed = false;
+
+  /// 회원가입 제출 상태. submitting인 동안 중복 탭과 화면 이탈을 막는다.
+  SubmitStatus submitStatus = SubmitStatus.idle;
+
+  /// 가입 성공 응답에서 읽은 실제 memberId. 성공 전에는 null.
+  int? createdMemberId;
+
+  /// 비밀번호 입력칸에 바로 붙일 수 있는 서버 오류(필드 단위). TextFormField.errorText에 연결한다.
+  String? passwordErrorText;
+
+  /// 어느 입력칸에도 붙지 않는 서버 오류(화면 단위). 화면이 한 번 꺼내 Snackbar로 보여준다.
+  String? snackbarMessage;
+
+  bool get isSubmitting => submitStatus == SubmitStatus.submitting;
 
   CheckStatus get nicknameCheckStatus => _nickname.status;
 
@@ -51,11 +71,70 @@ class SignUpViewModel extends ChangeNotifier {
   bool isNicknameConfirmed(String value) => _nickname.isConfirmed(value);
   bool isEmailConfirmed(String value) => _email.isConfirmed(value);
 
-  void onNicknameChanged(String value) => _nickname.onChanged(value);
-  void onEmailChanged(String value) => _email.onChanged(value);
+  void onNicknameChanged(String value) {
+    snackbarMessage = null; // 이전 제출의 서버 오류도 함께 무효화한다.
+    _nickname.onChanged(value);
+  }
+
+  void onEmailChanged(String value) {
+    snackbarMessage = null;
+    _email.onChanged(value);
+  }
+
+  /// 서버가 비밀번호를 거부한 뒤 사용자가 다시 입력하기 시작하면 오류 문구를 지운다.
+  void onPasswordChanged() {
+    if (passwordErrorText == null) return;
+    passwordErrorText = null;
+    _notify();
+  }
 
   Future<void> checkNickname(String value) => _nickname.check(value);
   Future<void> checkEmail(String value) => _email.check(value);
+
+  /// 회원가입 POST. 로컬 Form 검증과 두 중복 확인을 통과한 뒤에만 호출한다.
+  ///
+  /// 중복 확인 직후에도 다른 사용자가 같은 값을 가입할 수 있어서, 여기서 받는 409가
+  /// 최종 중복 결과다. 400 중 비밀번호 형식 오류는 입력칸에, 그 밖의 400·409는 Snackbar에 담는다.
+  Future<void> submit(CreateMemberRequest request) async {
+    if (isSubmitting) return; // 요청 중 중복 탭은 무시한다.
+    submitStatus = SubmitStatus.submitting;
+    createdMemberId = null;
+    passwordErrorText = null;
+    snackbarMessage = null;
+    _notify();
+
+    try {
+      final response = await _api.signUp(request);
+      if (_disposed) return;
+      final id = response.result?.memberId;
+      // 201인데 memberId가 없으면 가입을 완료한 것으로 표시하지 않고 계약 오류로 처리한다.
+      if (id == null) throw StateError('회원가입 결과에 memberId가 없습니다.');
+      createdMemberId = id;
+      submitStatus = SubmitStatus.success;
+    } on DioException catch (error) {
+      if (_disposed) return;
+      submitStatus = SubmitStatus.error;
+      final status = error.response?.statusCode;
+      final message = writeSignUpErrorMessage(error);
+      if (status == 400 && message.contains('비밀번호')) {
+        passwordErrorText = message;
+      } else {
+        snackbarMessage = message;
+      }
+      if (status == 409) {
+        // 확인 때는 사용 가능했던 값이 그 사이 쓰였다. 이전 확인 결과를 지워
+        // 다시 확인하게 하고, 그때 서버가 알려 주는 "중복" 상태를 입력창에 붙인다.
+        _nickname.resetConfirmation();
+        _email.resetConfirmation();
+      }
+    } catch (_) {
+      // StateError(계약 오류)뿐 아니라 파싱 실패 같은 예상 밖 오류도 submitting에 멈추지 않게 한다.
+      if (_disposed) return;
+      submitStatus = SubmitStatus.error;
+      snackbarMessage = '가입 결과를 확인하지 못했습니다. 새 요청 전에 서버 상태를 확인해 주세요.';
+    }
+    _notify();
+  }
 
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -106,6 +185,16 @@ class _FieldCheck {
 
   bool isConfirmed(String value) =>
       status == CheckStatus.available && _available == value.trim();
+
+  /// 가입 요청이 이 값을 거부했을 때, "사용 가능"이던 확인 결과를 지워 다시 확인하게 한다.
+  /// 이미 중복·오류로 표시된 칸은 건드리지 않는다.
+  void resetConfirmation() {
+    if (status != CheckStatus.available) return;
+    status = CheckStatus.idle;
+    _available = null;
+    errorText = null;
+    _requestVersion++;
+  }
 
   void onChanged(String value) {
     final trimmed = value.trim();

@@ -7,6 +7,7 @@ import 'package:movielog/core/storage/genre_preference.dart';
 import 'package:movielog/core/theme/app_theme.dart';
 import 'package:movielog/data/services/movielog_api_service.dart';
 import 'package:movielog/data/services/tmdb_movie_service.dart';
+import 'package:movielog/view_models/learning_member_session.dart';
 import 'package:provider/provider.dart';
 
 class MovieLogApp extends StatefulWidget {
@@ -16,6 +17,7 @@ class MovieLogApp extends StatefulWidget {
     this.tmdbService,
     this.movieLogApiService,
     this.preferences,
+    this.session,
   });
 
   /// 테스트나 개발 중 원하는 화면부터 띄울 때 사용한다.
@@ -25,6 +27,9 @@ class MovieLogApp extends StatefulWidget {
   final TmdbMovieService? tmdbService;
   final MovieLogApiService? movieLogApiService;
   final MoviePreferences? preferences;
+
+  /// 테스트에서 가입을 마친 상태로 시작하려고 넣는다. null이면 비어 있는 새 세션을 만든다.
+  final LearningMemberSession? session;
 
   @override
   State<MovieLogApp> createState() => _MovieLogAppState();
@@ -59,6 +64,11 @@ class _MovieLogAppState extends State<MovieLogApp> {
         ),
         Provider<MoviePreferences>(
           create: (_) => widget.preferences ?? GenrePreference(),
+        ),
+        // 회원가입 결과의 memberId를 여러 Route(영화 상세·마이페이지)가 같이 읽는다.
+        // 메모리에만 있어 앱을 다시 시작하면 사라지며, 로그인(인증)이 아니다.
+        ChangeNotifierProvider<LearningMemberSession>(
+          create: (_) => widget.session ?? LearningMemberSession(),
         ),
       ],
       child: MaterialApp.router(
