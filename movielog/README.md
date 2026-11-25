@@ -1,4 +1,4 @@
-# MovieLog — 8주차 JWT 로그인·세션 복원 (7주차 회원가입과 평점 쓰기 위에)
+# MovieLog — 9주차 즐겨찾기 연동·검색·페이지네이션 (8주차 JWT 로그인 위에)
 
 4주차 Mock Future를 실제 TMDB API로 바꾸고, 화면 코드와 데이터 코드를 MVVM으로 나눴다.
 5주차 자체 백엔드(NestJS `movie` 프로젝트)의 닉네임·이메일 중복 체크와 유저별 평점 조회도 화면에 연결했다.
@@ -10,6 +10,11 @@
 8주차에는 서버의 JWT 인증(7주차 NestJS 백엔드)에 맞춰 **로그인·세션 복원·로그아웃**을 붙이고, 평점 쓰기를
 `memberId` 경로에서 **토큰 기반**(`POST /ratings`, `PATCH·DELETE /ratings/{id}`)으로 바꿨다.
 Challenge: 이메일 저장, 마이페이지 내 정보 로딩·재시도, 가입일 표시(`2026.10.10 가입`), 프로필(닉네임) 수정과 이탈 확인.
+
+9주차에는 영화 상세의 **즐겨찾기 버튼**, 마이페이지의 **내 즐겨찾기**(MovieLog 즐겨찾기 + TMDB 영화 정보를 `movieId`로 결합),
+영화 목록의 **더 보기(page 단위)**, **영화 검색**을 붙였다. 늦게 도착한 응답(장르·검색어·계정·세션이 바뀐 뒤)은 버리고,
+로그아웃·계정 전환 뒤에는 이전 계정의 즐겨찾기가 화면에 남지 않게 했다.
+Challenge: 검색 debounce(500ms), 영화 목록 무한 스크롤, 평점 Dialog의 평점·즐겨찾기 통합 저장(`POST /movie-records`).
 
 > 서버 계약은 **7주차에 만든 NestJS**(경로에 `/v7` 없음)다. 로그인·내 정보 응답에는 `memberId`가 없고 토큰으로
 > 내 평점 목록을 읽는 API도 없다. 그래서 "내가 등록한 평점"은 **이번 로그인에서 등록한 평점만** 보여 주며(화면에도 안내),
@@ -23,6 +28,31 @@ flutter analyze
 flutter test                            # 네트워크를 쓰지 않는다 (실서버 테스트 3개는 건너뜀)
 MOVIELOG_LIVE=1 flutter test test/live   # 실제 TMDB·백엔드로 인증 화면·로그 생성(evidence/week05)
 ```
+
+## 9주차 변경
+
+| 위치 | 하는 일 |
+| --- | --- |
+| `data/services/favorite_api_service.dart` · `data/models/favorite_*.dart` | `POST·GET /favorites`, `GET·DELETE /favorites/{movieId}`. 해제는 200 + `result: null`. 보호용 Client만 쓴다 |
+| `core/network/auth_interceptor.dart` | 보호 경로에 `/favorites`·`/favorites/…`·`/movie-records` 추가(서버에 `/v7`·`/v8` 접두사는 없다). TMDB·외부 URL에는 Bearer를 붙이지 않는다 |
+| `core/session/session_guard.dart` · `auth_session_bridge.dart` | 도착한 응답이 **현재 로그인 세션**의 것인지 판정(같은 이메일로 다시 로그인해도 새 세션). 인증 상태의 기준은 8주차 `AuthViewModel`이다 |
+| `core/utils/map_bounded.dart` · `safe_notify.dart` · `view_models/load_phase.dart` | 동시에 5개만 처리하는 map · dispose 뒤 알림 방지 mixin · 화면 상태 enum |
+| `view_models/favorite_detail_view_model.dart` | 상세 북마크. 서버가 확인한 뒤에만 바뀐다(optimistic 금지). 409·404는 `GET /favorites/{movieId}`로 맞추고 timeout에서 POST를 자동 재시도하지 않는다 |
+| `view_models/favorites_view_model.dart` | 목록 → TMDB 정보 보충(최대 5개 동시). 한 건 실패는 그 카드만 placeholder + 그 카드만 재조회 |
+| `view_models/paged_movies_view_model.dart` | 영화 목록·검색이 각자 인스턴스로 쓰는 page 모델: 첫 page 교체·다음 page append, 성공 때만 `nextPage`+1, `movieId` 중복 제거, 요청 generation, page 상한 500 |
+| `widgets/member_session_gate.dart` | 사용자별 화면을 열기 전에 내 정보·세션 일치 확인(로딩·오류·다시 시도). 사용자별 ViewModel은 `ValueKey('email:generation')` |
+| `features/movies/…/movie_search_screen.dart` · `movie_list_screen.dart` · `widgets/movie_page_footer.dart` | 검색(idle·결과·결과 없음·오류, 입력 500ms debounce + 제출) · 첫 page + 무한 스크롤(`extentAfter ≤ 300`) · footer(더 보기·로딩·오류 재시도·끝) |
+| `features/my_page/…/favorites_screen.dart` · `my_page_screen.dart` | 마이페이지의 "내 즐겨찾기" 행 → `/my/favorites`(하단 NavigationBar 없음) |
+| `data/services/movie_record_api_service.dart` · `features/rating/…/movie_rating_dialog.dart` | Challenge C: 아직 즐겨찾기하지 않은 영화의 평점 Dialog에 "즐겨찾기에도 추가" → `POST /movie-records` |
+
+**5주차 동작이 바뀐 곳**: 영화 목록은 "Discover 여러 번 호출 · 최대 30개 모으기"에서 page당 20편 이어 붙이기로 바뀌었고, 5주차의 `RetryDialog`·`retryNoticeCount`는 없앴다(첫 page 실패는 전체 화면 오류 + 다시 시도). 홈의 인기 영화 5개는 그대로다.
+
+### 9주차 검증 범위 (정직하게)
+
+- `flutter analyze` 0건, `flutter test` **592개 통과**(실서버·실제 TMDB용 3개는 건너뜀, 모두 가짜 서비스 기반). 일부러 코드를 망가뜨려 테스트가 잡는지 **26가지(29회)** 확인했고, 처음에 못 잡은 3개(상세 Route `ValueKey`, `sessionVersion` 무시, `forVersion` 무시)는 테스트를 더해 잡았다.
+- 실제 NestJS(일회용 DB)와 로컬 프록시·**가짜 TMDB 서버**에 연결한 Flutter Web(Chrome 390x844)에서 즐겨찾기 등록·해제, 내 즐겨찾기(한 건 실패·재조회·빈 목록), 더 보기(실패·재시도·마지막 page), 장르·검색어 변경 때의 늦은 응답, 계정 전환, 401·403, 시간 초과, Challenge A·B·C를 확인했다. 실패·지연·마지막 page는 가짜 서버·프록시로 **일부러 만든 것**이다.
+- 연결 끊기를 주입한 요청은 브라우저가 한 번 더 보내 성공했다(앱의 자동 재시도가 아니다). 그래서 연결 끊김과 `POST /movie-records`의 시간 초과는 실제 화면이 아니라 **테스트로만** 확인했다.
+- 이 맥에는 Xcode·Android SDK·TMDB 토큰이 없다. iOS/Android·Keychain/Keystore는 확인하지 못했고 영상도 없다(정지 화면과 요청 기록만).
 
 ## 8주차 변경
 
@@ -113,17 +143,26 @@ Router(`authRedirect`)가 **상태만 보고** 이동을 정한다. 화면은 �
 ## 동작
 
 - 홈: Popular 첫 페이지 `take(5)`. 요청은 ViewModel 생성 때 한 번.
-- 영화: Genre API로 Chip, Discover page 1부터 TMDB `id`를 Map key로 중복 없이 최대 30개(한 페이지 개수를 코드에 박지 않음).
+- 영화(9주차): Genre API로 Chip, Discover **첫 page만** 표시하고 스크롤이 끝에 가까워지면 다음 page를 이어 붙인다(`movieId` 중복 제거, 성공 때만 `nextPage`+1, 마지막 page는 끝 문구). 검색은 별도 모델로 "더 보기" 버튼.
 - 장르 선택 → `with_genres`로 page 1부터 재요청. "전체"는 `with_genres` 없음. 요청 중엔 Chip·필터 비활성.
 - BottomSheet 다중 선택 → `List<int>` → `with_genres=28|12`(OR).
 - Pull to Refresh: 기존 목록을 둔 채 page 1부터, Loading 중엔 제스처 무시.
-- 실패: 최근 목록이 있으면 비우지 않고 재시도 Dialog(취소/다시 시도), 없으면 Error 화면.
+- 실패(9주차): 첫 page 실패는 전체 화면 오류 + 다시 시도, 다음 page 실패는 기존 목록을 두고 footer에서 같은 page를 다시 시도(5주차의 재시도 Dialog는 없앴다).
 - 늦게 온 응답은 request version으로 버린다. dispose 뒤 notify 없음.
 - 상세 Route `/movies/{TMDB id}`. 평점 Dialog(1~5 정수) → `CreateRatingRequest(movieId: TMDB id)`.
 - 회원가입: 닉네임(2~12자)·이메일 `중복 확인` → `GET /members/nickname|email/...`. 확인한 값 그대로여야 가입 버튼이 켜진다. 6주차: 버튼은 입력창 오른쪽, 중복이면 입력창이 에러 상태가 되고 버튼이 즉시 비활성, 입력을 바꾸면 해제, 방금 지운 중복 값을 다시 입력하면 요청 없이 즉시 에러.
 - 마이페이지(8주차): 닉네임·이메일·가입일 + 프로필 수정·로그아웃. "내가 등록한 평점" 행 → `/my/ratings`는 **이번 로그인에서 등록한 평점**을 보여 주고 movieId로 TMDB 제목·포스터를 찾는다. 평점이 없으면 Empty, TMDB 실패는 그 영화만 `영화 #id` placeholder. (6·7주차의 `GET /members/{memberId}/ratings`·학습용 memberId는 더 쓰지 않는다.)
 - 쓰기: 회원가입 `POST /members`(최종 409는 Snackbar, 서버가 거부한 비밀번호는 입력칸 에러, **성공해도 로그인되지 않고** 로그인 화면으로 가 이메일만 채운다) → 영화 상세의 평점 Dialog(별점 + 코멘트) `POST /ratings`(8주차: 토큰, memberId 없음) → 마이페이지에서 수정 `PATCH /ratings/{id}`·삭제 `DELETE`(확인 Dialog 후, 성공은 200 + `result: null`). 응답으로 받은 평점 객체로 목록을 바꾼다(다시 조회할 API가 없다).
 - 장르·정렬 저장 키는 `selected_genre_ids`(TMDB ID)·`movie_sort`. 4주차 이름 값은 읽지 않는다.
+
+## 검증 자료 (`evidence/week09`)
+
+- `01~44_*.jpg`: 실제 Chrome(Flutter Web 390x844)의 MovieLog 웹이 **9주차 NestJS**(`brownglasses/week09`, 일회용 MySQL DB)와 로컬 프록시·가짜 TMDB 서버를 호출한 화면(화면을 찍을 때의 로컬 커밋은 `3a51c9b`이고, 여기에 테스트 4개 파일·증거 파일을 더해 다시 만든(amend) 것이 최종 커밋 `a8af17a`다. 두 커밋의 `lib/`·`pubspec`은 같다. `3a51c9b`는 push되지 않는다). 상세 즐겨찾기 등록·해제, 내 즐겨찾기(한 건 실패·재조회·빈 목록·계정 전환), 더 보기(실패·재시도·끝), 장르 늦은 응답, 검색(결과 없음·오류·재시도), 401·403·시간 초과, Challenge A(debounce)·B(무한 스크롤)·C(통합 저장)
+- `logs/proxy-requests.ndjson` · `logs/tmdb-requests.ndjson` · `logs/proxy-summary.txt`: 요청 기록. **토큰·비밀번호·본문은 기록하지 않는다.** 실패·지연·503·403은 프록시·가짜 TMDB가 주입한 것이다
+- `logs/check-auth-log.txt`: 보호 경로 41건 모두 Authorization 있음, 공개 경로 6건 모두 없음, TMDB 47건은 TMDB 전용 값만 → 위반 없음
+- `logs/storage-check.txt` · `logs/console-log-check.txt`: 웹 저장소(토큰은 JWT 모양이 아닌 암호문)와 콘솔 로그(`Bearer ***`). **웹이라 Keychain/Keystore가 아니다**
+- `flutter-analyze.txt`, `flutter-test.txt`: 분석·테스트 결과(592개 통과, 3개 건너뜀)
+- 영상은 없다. 한글 글꼴(Pretendard)·viewport meta·TMDB·서버 주소는 임시 복사본에만 넣었고 저장소 코드에는 없다
 
 ## 검증 자료 (`evidence/week08`)
 

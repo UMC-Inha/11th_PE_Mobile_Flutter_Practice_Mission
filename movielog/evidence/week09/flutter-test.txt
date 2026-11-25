@@ -1,0 +1,41 @@
+flutter test (offline, no network) — 2026-11-25 00:45
+Flutter 3.47.5 • channel stable • https://github.com/flutter/flutter.git
+파일별 집계(전체를 한 번에 실행한 결과를 파일별로 나눈 값): 통과 592, 건너뜀 3, 실패 0
+건너뜀은 실서버·실제 TMDB가 필요한 test/live 테스트다(MOVIELOG_LIVE=1 일 때만 실행).
+실서버·실제 TMDB·브라우저·시뮬레이터로는 확인하지 않았다. 이 숫자는 가짜(Fake) 서비스 기반 테스트 결과다.
+
+  test/auth_flow_test.dart: 24
+  test/auth_interceptor_test.dart: 23
+  test/auth_models_test.dart: 14
+  test/auth_redirect_test.dart: 48
+  test/auth_view_model_test.dart: 33
+  test/edit_profile_view_model_test.dart: 14
+  test/favorite_api_test.dart: 13
+  test/favorite_button_test.dart: 15
+  test/favorite_detail_view_model_test.dart: 27
+  test/favorites_screen_test.dart: 18
+  test/favorites_view_model_test.dart: 19
+  test/live/fixture_evidence_test.dart: 건너뜀 1
+  test/live/live_evidence_test.dart: 건너뜀 1
+  test/live/tmdb_failure_log_test.dart: 건너뜀 1
+  test/movie_record_test.dart: 20
+  test/movie_search_and_paging_test.dart: 36
+  test/movielog_button_test.dart: 10
+  test/my_page_and_profile_test.dart: 18
+  test/my_ratings_edit_screen_test.dart: 20
+  test/my_ratings_screen_test.dart: 9
+  test/paged_movies_view_model_test.dart: 25
+  test/rating_dialog_test.dart: 18
+  test/rating_with_favorite_test.dart: 17
+  test/rating_write_view_model_test.dart: 43
+  test/session_and_utils_test.dart: 19
+  test/sign_up_duplicate_check_test.dart: 8
+  test/sign_up_submit_test.dart: 17
+  test/sign_up_view_model_test.dart: 18
+  test/tmdb_data_test.dart: 15
+  test/view_model_test.dart: 16
+  test/widget_test.dart: 14
+  test/write_api_test.dart: 21
+
+전체를 한 번에 실행: +592 ~3: All tests passed!
+(movielog_button_test 실행 중 출력되는 'EXCEPTION CAUGHT BY RENDERING LIBRARY' 레이아웃 메시지는 9주차 이전부터 있던 출력이며 실패가 아니다.)

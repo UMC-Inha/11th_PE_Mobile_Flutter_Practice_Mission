@@ -16,7 +16,8 @@ Finder _star(int index) => find
 
 void main() {
   late List<({int score, String? comment})> submitted;
-  late Future<void> Function(int score, String? comment) onSubmit;
+  late Future<void> Function(int score, String? comment, bool addToFavorites)
+  onSubmit;
   bool? result;
   bool resultReturned = false;
 
@@ -24,7 +25,7 @@ void main() {
     submitted = [];
     result = null;
     resultReturned = false;
-    onSubmit = (score, comment) async {
+    onSubmit = (score, comment, addToFavorites) async {
       submitted.add((score: score, comment: comment));
     };
   });
@@ -34,6 +35,7 @@ void main() {
     int initialScore = 0,
     String? initialComment,
     String title = '평점 남기기',
+    bool showAddToFavorite = false,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -48,7 +50,9 @@ void main() {
                   movieTitle: '파이트 클럽',
                   initialScore: initialScore,
                   initialComment: initialComment,
-                  onSubmit: (score, comment) => onSubmit(score, comment),
+                  showAddToFavorite: showAddToFavorite,
+                  onSubmit: (score, comment, addToFavorites) =>
+                      onSubmit(score, comment, addToFavorites),
                 );
                 resultReturned = true;
               },
@@ -159,7 +163,7 @@ void main() {
 
   testWidgets('저장 중에는 로딩 버튼, 입력 잠금, 이탈 방지(바깥 탭·뒤로가기)가 모두 걸린다', (tester) async {
     final gate = Completer<void>();
-    onSubmit = (score, comment) async {
+    onSubmit = (score, comment, addToFavorites) async {
       submitted.add((score: score, comment: comment));
       await gate.future;
     };
@@ -227,7 +231,7 @@ void main() {
     tester,
   ) async {
     var fail = true;
-    onSubmit = (score, comment) async {
+    onSubmit = (score, comment, addToFavorites) async {
       submitted.add((score: score, comment: comment));
       if (fail) throw const RatingSaveException('이미 이 영화에 평점을 남기셨습니다.');
     };
@@ -266,7 +270,7 @@ void main() {
   });
 
   testWidgets('서버 문구가 없는 예외는 기본 안내를 보여준다', (tester) async {
-    onSubmit = (score, comment) async => throw StateError('boom');
+    onSubmit = (score, comment, addToFavorites) async => throw StateError('boom');
     await open(tester);
     await tester.tap(_star(1));
     await tester.pump();
@@ -303,5 +307,127 @@ void main() {
     expect(find.text('별을 눌러 평점을 선택하세요'), findsOneWidget);
     expect(saveButton(tester).onPressed, isNull);
     expect(commentField(tester).controller!.text, '유지'); // 코멘트는 건드리지 않는다
+  });
+
+  group('"즐겨찾기에도 추가" 체크박스 (Challenge C)', () {
+    late List<bool> addFlags;
+
+    setUp(() {
+      addFlags = [];
+      onSubmit = (score, comment, addToFavorites) async {
+        submitted.add((score: score, comment: comment));
+        addFlags.add(addToFavorites);
+      };
+    });
+
+    CheckboxListTile checkbox(WidgetTester tester) => tester
+        .widget<CheckboxListTile>(find.byKey(addToFavoriteCheckboxKey));
+
+    testWidgets('기본값(showAddToFavorite=false)에서는 체크박스가 없고 addToFavorites는 항상 false다', (tester) async {
+      await open(tester);
+      expect(find.byKey(addToFavoriteCheckboxKey), findsNothing);
+      expect(find.text('즐겨찾기에도 추가'), findsNothing);
+      await tester.tap(_star(3));
+      await tester.pump();
+      await tester.tap(find.byKey(saveRatingButtonKey));
+      await tester.pumpAndSettle();
+      expect(addFlags, [false]);
+    });
+
+    testWidgets('showAddToFavorite=true면 코멘트 아래에 해제된 체크박스가 보인다', (tester) async {
+      await open(tester, showAddToFavorite: true);
+      expect(find.byKey(addToFavoriteCheckboxKey), findsOneWidget);
+      expect(find.text('즐겨찾기에도 추가'), findsOneWidget);
+      expect(checkbox(tester).value, isFalse);
+      expect(
+        tester.getTopLeft(find.byKey(addToFavoriteCheckboxKey)).dy,
+        greaterThan(tester.getTopLeft(find.byKey(ratingCommentFieldKey)).dy),
+      );
+    });
+
+    testWidgets('체크하고 저장하면 addToFavorites=true, 체크하지 않으면 false로 넘어간다', (tester) async {
+      await open(tester, showAddToFavorite: true);
+      await tester.tap(_star(3));
+      await tester.pump();
+      await tester.tap(find.byKey(addToFavoriteCheckboxKey));
+      await tester.pump();
+      expect(checkbox(tester).value, isTrue);
+      await tester.tap(find.byKey(saveRatingButtonKey));
+      await tester.pumpAndSettle();
+      expect(addFlags, [true]);
+      expect(result, isTrue);
+
+      // 다시 열어 체크하지 않고 저장한다.
+      await tester.tap(find.byKey(_openKey));
+      await tester.pumpAndSettle();
+      await tester.tap(_star(1));
+      await tester.pump();
+      await tester.tap(find.byKey(saveRatingButtonKey));
+      await tester.pumpAndSettle();
+      expect(addFlags, [true, false]);
+    });
+
+    testWidgets('저장 중에는 체크박스도 잠기고 값이 바뀌지 않는다', (tester) async {
+      final gate = Completer<void>();
+      onSubmit = (score, comment, addToFavorites) async {
+        addFlags.add(addToFavorites);
+        await gate.future;
+      };
+      await open(tester, showAddToFavorite: true);
+      await tester.tap(_star(2));
+      await tester.pump();
+      await tester.tap(find.byKey(addToFavoriteCheckboxKey));
+      await tester.pump();
+      await tester.tap(find.byKey(saveRatingButtonKey));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(checkbox(tester).onChanged, isNull);
+      await tester.tap(find.byKey(addToFavoriteCheckboxKey), warnIfMissed: false);
+      await tester.pump();
+      expect(checkbox(tester).value, isTrue);
+      gate.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('저장 실패(RatingSaveException): Dialog는 열려 있고 별점·코멘트·체크가 그대로 유지된다', (tester) async {
+      onSubmit = (score, comment, addToFavorites) async {
+        addFlags.add(addToFavorites);
+        throw const RatingSaveException('요청 값이 올바르지 않습니다.');
+      };
+      await open(tester, showAddToFavorite: true);
+      await tester.tap(_star(3));
+      await tester.pump();
+      await tester.enterText(find.byKey(ratingCommentFieldKey), '유지해야 하는 코멘트');
+      await tester.tap(find.byKey(addToFavoriteCheckboxKey));
+      await tester.pump();
+      await tester.tap(find.byKey(saveRatingButtonKey));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MovieRatingDialog), findsOneWidget);
+      expect(find.text('요청 값이 올바르지 않습니다.'), findsOneWidget);
+      expect(find.text('4점'), findsOneWidget);
+      expect(commentField(tester).controller!.text, '유지해야 하는 코멘트');
+      expect(checkbox(tester).value, isTrue, reason: '체크도 유지');
+      expect(saveButton(tester).onPressed, isNotNull);
+      expect(resultReturned, isFalse);
+
+      // 그대로 다시 저장하면 같은 값이 다시 넘어간다.
+      await tester.tap(find.byKey(saveRatingButtonKey));
+      await tester.pumpAndSettle();
+      expect(addFlags, [true, true]);
+    });
+
+    testWidgets('RatingSaveClosedException이면 Dialog를 닫고 false를 돌려준다(사유는 호출한 쪽이 안내)', (tester) async {
+      onSubmit = (score, comment, addToFavorites) async {
+        throw const RatingSaveClosedException('이미 이 영화에 평점을 남기셨습니다.');
+      };
+      await open(tester, showAddToFavorite: true);
+      await tester.tap(_star(3));
+      await tester.pump();
+      await tester.tap(find.byKey(saveRatingButtonKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(MovieRatingDialog), findsNothing);
+      expect(result, isFalse);
+      expect(resultReturned, isTrue);
+    });
   });
 }

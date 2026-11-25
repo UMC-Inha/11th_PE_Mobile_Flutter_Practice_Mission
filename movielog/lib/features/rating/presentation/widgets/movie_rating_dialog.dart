@@ -11,6 +11,7 @@ const resetRatingButtonKey = Key('resetRatingButton');
 const ratingCommentFieldKey = Key('ratingCommentField');
 const ratingDialogErrorKey = Key('ratingDialogError');
 const ratingDialogPopScopeKey = Key('ratingDialogPopScope');
+const addToFavoriteCheckboxKey = Key('addToFavoriteCheckbox');
 
 /// 코멘트 최대 길이. 서버 검증(500자)과 같다.
 const ratingCommentMaxLength = 500;
@@ -20,16 +21,24 @@ const ratingCommentMaxLength = 500;
 /// 저장 로직은 [onSubmit] 콜백으로 받아 Dialog 안에서 실행한다. 그래야 저장 중 상태(로딩 버튼,
 /// 입력 잠금, 이탈 방지)와 실패 시 입력 유지를 Dialog가 직접 관리할 수 있다.
 /// - onSubmit이 예외 없이 끝나면 true, 취소하면 onSubmit을 부르지 않고 false를 돌려준다.
+/// - onSubmit이 [RatingSaveException]을 던지면 Dialog를 **열어 둔 채** 그 문구를 안에 보여 주고
+///   입력(별점·코멘트·즐겨찾기 체크)은 그대로 둔다.
+/// - [RatingSaveClosedException]을 던지면(다시 눌러도 소용없는 409·404) Dialog를 닫고 false를 돌려준다.
+///   사유는 호출한 쪽이 Snackbar로 안내한다.
 /// - null은 아직 아무 동작도 하지 않은 상태(저장 중에는 닫히지 않는다)를 뜻한다.
 /// - `barrierDismissible: false`로 저장 중 바깥 탭으로 닫히는 것도 막는다.
 ///   Dialog 안의 PopScope는 시스템 뒤로가기만 막으므로 둘을 함께 쓴다.
+///
+/// [showAddToFavorite]가 true일 때만 "즐겨찾기에도 추가" 체크박스를 보여 준다(기본 false).
+/// 영화 상세에서 **아직 즐겨찾기하지 않은 영화**를 평가할 때만 켠다. 평점 수정은 켜지 않는다.
 Future<bool?> showMovieRatingDialog(
   BuildContext context, {
   required String movieTitle,
-  required Future<void> Function(int score, String? comment) onSubmit,
+  required RatingSubmitCallback onSubmit,
   String title = '평점 남기기',
   int initialScore = 0,
   String? initialComment,
+  bool showAddToFavorite = false,
 }) {
   return showDialog<bool>(
     context: context,
@@ -39,10 +48,15 @@ Future<bool?> showMovieRatingDialog(
       movieTitle: movieTitle,
       initialScore: initialScore,
       initialComment: initialComment,
+      showAddToFavorite: showAddToFavorite,
       onSubmit: onSubmit,
     ),
   );
 }
+
+/// 저장 콜백. 체크박스를 보여 주지 않는 Dialog에서는 [addToFavorites]가 항상 false다.
+typedef RatingSubmitCallback =
+    Future<void> Function(int score, String? comment, bool addToFavorites);
 
 class MovieRatingDialog extends StatefulWidget {
   const MovieRatingDialog({
@@ -52,18 +66,23 @@ class MovieRatingDialog extends StatefulWidget {
     this.title = '평점 남기기',
     this.initialScore = 0,
     this.initialComment,
+    this.showAddToFavorite = false,
   });
 
   final String title;
   final String movieTitle;
+
+  /// true면 코멘트 아래에 "즐겨찾기에도 추가" 체크박스를 보여 준다.
+  final bool showAddToFavorite;
 
   /// 수정 Dialog는 기존 평점·코멘트를 넣어 열자마자 이전 입력을 보여준다.
   /// comment가 null이면 코멘트 칸은 빈 채로 시작한다.
   final int initialScore;
   final String? initialComment;
 
-  /// 저장한다. 실패하면 [RatingSaveException]을 던져 Dialog 안에 그 사유를 보여준다.
-  final Future<void> Function(int score, String? comment) onSubmit;
+  /// 저장한다. 실패하면 [RatingSaveException]을 던져 Dialog 안에 그 사유를 보여주고,
+  /// [RatingSaveClosedException]이면 Dialog를 닫는다.
+  final RatingSubmitCallback onSubmit;
 
   @override
   State<MovieRatingDialog> createState() => _MovieRatingDialogState();
@@ -78,6 +97,8 @@ class _MovieRatingDialogState extends State<MovieRatingDialog> {
     text: widget.initialComment ?? '',
   );
 
+  // 체크 여부도 State에 두어, 저장에 실패해도 사용자가 고른 값이 그대로 남는다.
+  bool _addToFavorites = false;
   bool _isSubmitting = false;
   String? _errorText;
 
@@ -99,9 +120,18 @@ class _MovieRatingDialogState extends State<MovieRatingDialog> {
       _errorText = null;
     });
     try {
-      await widget.onSubmit(_score, comment.isEmpty ? null : comment);
+      await widget.onSubmit(
+        _score,
+        comment.isEmpty ? null : comment,
+        // 체크박스가 보이지 않는 Dialog에서는 항상 false다.
+        widget.showAddToFavorite && _addToFavorites,
+      );
       if (!mounted) return;
       Navigator.of(context).pop(true);
+    } on RatingSaveClosedException {
+      // 다시 눌러도 소용없는 실패: Dialog를 닫는다. 사유는 호출한 쪽이 Snackbar로 안내한다.
+      if (!mounted) return;
+      Navigator.of(context).pop(false);
     } catch (error) {
       if (!mounted) return;
       // 실패해도 입력(별점·코멘트)은 그대로 두고, 버튼이 로딩에 멈추지 않게 되돌린다.
@@ -174,6 +204,18 @@ class _MovieRatingDialogState extends State<MovieRatingDialog> {
                 maxLength: ratingCommentMaxLength,
                 decoration: const InputDecoration(hintText: '코멘트를 남겨보세요 (선택)'),
               ),
+              if (widget.showAddToFavorite)
+                CheckboxListTile(
+                  key: addToFavoriteCheckboxKey,
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('즐겨찾기에도 추가'),
+                  value: _addToFavorites,
+                  onChanged: _isSubmitting
+                      ? null
+                      : (value) =>
+                            setState(() => _addToFavorites = value ?? false),
+                ),
               if (_errorText != null) ...[
                 const SizedBox(height: 4),
                 Text(

@@ -1,8 +1,8 @@
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
 
-/// Popular·Discover 공통 페이지 응답.
-/// 영화 배열과 page·total_pages를 함께 묶어야 다음 페이지 요청 여부와
-/// 최대 30개 수집의 종료 조건을 판단할 수 있다.
+/// Popular·Discover·Search 공통 페이지 응답.
+/// 영화 배열과 page·total_pages를 함께 묶어야 "더 보기"로 다음 페이지를 요청할 수 있는지
+/// (마지막 page인지) 판단할 수 있다.
 class TmdbMoviePageDto {
   const TmdbMoviePageDto({
     required this.page,

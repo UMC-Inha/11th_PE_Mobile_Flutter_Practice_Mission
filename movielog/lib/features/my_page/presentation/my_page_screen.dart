@@ -8,6 +8,7 @@ import 'package:movielog/widgets/movielog_button.dart';
 import 'package:provider/provider.dart';
 
 const myRatingsEntryKey = Key('myRatingsEntry');
+const myFavoritesEntryKey = Key('myFavoritesEntry');
 const editProfileEntryKey = Key('editProfileEntry');
 const logoutButtonKey = Key('logoutButton');
 const myPageLoadingKey = Key('myPageLoading');
@@ -166,6 +167,20 @@ class _MyPageContent extends StatelessWidget {
           trailing: const Icon(Icons.chevron_right),
           // push: 마이페이지를 스택에 남겨 BackButton으로 되돌아오게 한다.
           onTap: () => context.push(AppRoutes.myRatings),
+        ),
+        const Divider(height: 1),
+        // "내가 등록한 평점" 바로 아래. 이 목록은 내 정보([member])를 받은 뒤에만 그려지므로,
+        // 이 행도 내 정보가 준비된 뒤에만 보이고 눌린다.
+        ListTile(
+          key: myFavoritesEntryKey,
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.bookmark_border, color: AppColors.primary),
+          title: const Text(
+            '내 즐겨찾기',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push(AppRoutes.myFavorites),
         ),
         const Divider(height: 1),
       ],

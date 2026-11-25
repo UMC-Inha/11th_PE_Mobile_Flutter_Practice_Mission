@@ -62,6 +62,10 @@ void main() {
       env.ratingApi,
       env.auth,
       env.session,
+      movieRecordApi: FakeMovieRecordApiService(
+        ratingApi: env.ratingApi,
+        favoriteApi: FakeFavoriteApiService(),
+      ),
       movieId: movieId,
       movie: movie(movieId),
     );

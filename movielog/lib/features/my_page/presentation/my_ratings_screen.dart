@@ -38,7 +38,8 @@ class MyRatingsScreen extends StatelessWidget {
       // 기존 값을 Dialog 초기값으로 넣는다. comment가 null이면 코멘트 칸은 빈 채로 열린다.
       initialScore: rating.score,
       initialComment: rating.comment,
-      onSubmit: (score, comment) => viewModel.updateRating(
+      // 수정 Dialog에는 즐겨찾기 체크박스가 없어서 addToFavorites는 쓰지 않는다(항상 false).
+      onSubmit: (score, comment, _) => viewModel.updateRating(
         ratingId: rating.ratingId,
         score: score,
         comment: comment,

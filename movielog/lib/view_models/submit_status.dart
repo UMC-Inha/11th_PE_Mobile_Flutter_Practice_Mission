@@ -12,3 +12,14 @@ class RatingSaveException implements Exception {
   @override
   String toString() => message;
 }
+
+/// 저장은 실패했지만 입력을 고치거나 다시 눌러도 소용없는 경우(이미 평점이 있음·이미 즐겨찾기·회원 없음)에
+/// Dialog를 **닫고** 그 사유를 Snackbar로 안내하게 하는 예외. [RatingSaveException]은 Dialog를 열어 둔다.
+class RatingSaveClosedException implements Exception {
+  const RatingSaveClosedException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}

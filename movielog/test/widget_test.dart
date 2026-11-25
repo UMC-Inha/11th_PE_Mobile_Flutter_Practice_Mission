@@ -5,10 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/app/app_router.dart';
 import 'package:movielog/features/movies/presentation/movie_detail_screen.dart';
 import 'package:movielog/features/movies/presentation/movie_list_screen.dart';
+import 'package:movielog/features/movies/presentation/widgets/favorite_button.dart';
 import 'package:movielog/features/movies/presentation/widgets/genre_filter_sheet.dart';
 import 'package:movielog/features/movies/presentation/widgets/movie_grid.dart';
 import 'package:movielog/features/movies/presentation/widgets/movie_list_states.dart';
-import 'package:movielog/features/movies/presentation/widgets/retry_dialog.dart';
 import 'package:movielog/features/rating/presentation/widgets/movie_rating_dialog.dart';
 import 'package:movielog/features/sign_up/presentation/sign_up_screen.dart';
 import 'package:movielog/features/auth/presentation/login_screen.dart';
@@ -208,9 +208,11 @@ void main() {
     expect(find.text('파이트 클럽'), findsOneWidget);
     expect(find.text('줄거리 정보가 없어요.'), findsOneWidget);
 
+    // 서버 응답(등록 성공)이 온 뒤에 Snackbar가 보인다. 3주차의 로컬 mock 토글은 없어졌다.
     await tester.tap(find.byKey(favoriteButtonKey));
-    await tester.pump();
+    await settle(tester);
     expect(find.text('즐겨찾기에 추가했어요.'), findsOneWidget);
+    expect(h.favoriteApi.addCalls, [550]);
 
     await tester.ensureVisible(find.byKey(rateButtonKey));
     await tester.tap(find.byKey(rateButtonKey));
@@ -288,7 +290,7 @@ void main() {
     expect(currentLocation(tester), AppRoutes.home);
   });
 
-  testWidgets('목록: Loading → Success 30편, 장르 Chip은 with_genres 재요청', (
+  testWidgets('목록: Loading → Success 첫 page 20편, 장르 Chip은 with_genres 재요청', (
     tester,
   ) async {
     await openApp(tester, AppRoutes.movies);
@@ -296,21 +298,22 @@ void main() {
     expect(find.byType(MovieListLoading), findsOneWidget);
     await settle(tester);
     expect(find.byType(MovieGrid), findsOneWidget);
-    expect(find.text('전체 · 30편'), findsOneWidget);
+    expect(find.text('전체 · 20편'), findsOneWidget, reason: '첫 page만 보인다');
+    expect(tmdb.discoverCalls.map((c) => c.page), [1]);
     expect(find.text('액션'), findsWidgets);
 
     await tester.tap(find.byKey(const Key('genreChip-18')));
     await tester.pump();
-    // 요청 중: Loading이고 Chip은 눌리지 않는다.
+    // 요청 중: Loading이다. 장르 Chip은 요청 중에도 바꿀 수 있다(이전 장르의 늦은 응답은 버린다).
     expect(find.byType(MovieListLoading), findsOneWidget);
     expect(
       tester
           .widget<ChoiceChip>(find.byKey(const Key('genreChip-12')))
           .onSelected,
-      isNull,
+      isNotNull,
     );
     await settle(tester);
-    expect(find.text('드라마 · 30편'), findsOneWidget);
+    expect(find.text('드라마 · 20편'), findsOneWidget);
     expect(tmdb.discoverCalls.last.genreIds, [18]);
     expect(
       tmdb.discoverCalls
@@ -322,7 +325,7 @@ void main() {
 
     await tester.tap(find.byKey(allGenreChipKey));
     await settle(tester);
-    expect(find.text('전체 · 30편'), findsOneWidget);
+    expect(find.text('전체 · 20편'), findsOneWidget);
     expect(tmdb.discoverCalls.last.genreIds, isEmpty);
   });
 
@@ -348,10 +351,14 @@ void main() {
     await tester.pump();
     expect(find.byType(MovieListLoading), findsOneWidget);
     await settle(tester);
-    expect(find.text('전체 · 30편'), findsOneWidget);
+    expect(find.text('전체 · 20편'), findsOneWidget);
   });
 
-  testWidgets('목록: 새로고침 실패 시 목록 유지 + 재시도 Dialog → 다시 시도로 교체', (tester) async {
+  testWidgets('목록: 당겨서 새로고침이 실패하면 전체 오류 화면이 되고, 다시 시도하면 첫 page로 교체된다', (
+    tester,
+  ) async {
+    // 5주차에는 "목록 유지 + 재시도 Dialog"였다. 9주차는 조건·새로고침 때 목록을 모두 비우므로
+    // 실패하면 이전 목록 없이 전체 오류 화면이다(이전 목록을 남기면 page·중복 규칙이 깨진다).
     await openApp(tester, AppRoutes.movies);
     await settle(tester);
     expect(find.byKey(const Key('movieCard-1')), findsOneWidget);
@@ -359,10 +366,11 @@ void main() {
     tmdb.failDiscover = true;
     await tester.drag(find.byType(MovieGrid), const Offset(0, 500));
     await tester.pump(const Duration(milliseconds: 100));
+    // 당김 표시가 자리를 잡은 뒤에 요청이 나가고, 가짜 TMDB의 응답 지연(300ms)이 지나야 끝난다.
     await settle(tester);
-    expect(find.byType(RetryDialog), findsOneWidget);
-    // 최근 성공 목록은 그대로 화면에 남아 있다.
-    expect(find.byKey(const Key('movieCard-1')), findsOneWidget);
+    await settle(tester);
+    expect(find.byType(MovieListError), findsOneWidget);
+    expect(find.byKey(const Key('movieCard-1')), findsNothing);
 
     tmdb.failDiscover = false;
     tmdb.discoverPage = (page, genreIds) =>
@@ -371,25 +379,12 @@ void main() {
               ..totalPages = 1)
             .discoverPageFor(page, genreIds, offset: 500);
     final before = tmdb.discoverCalls.length;
-    await tester.tap(find.byKey(retryDialogRetryKey));
+    await tester.tap(find.text('다시 시도'));
     await settle(tester);
-    expect(find.byType(RetryDialog), findsNothing);
+    expect(find.byType(MovieListError), findsNothing);
     expect(tmdb.discoverCalls[before].page, 1);
     expect(find.byKey(const Key('movieCard-501')), findsOneWidget);
     expect(find.text('전체 · 20편'), findsOneWidget);
-  });
-
-  testWidgets('목록: 재시도 Dialog에서 취소하면 기존 목록 그대로', (tester) async {
-    await openApp(tester, AppRoutes.movies);
-    await settle(tester);
-    tmdb.failDiscover = true;
-    await tester.drag(find.byType(MovieGrid), const Offset(0, 500));
-    await tester.pump(const Duration(milliseconds: 100));
-    await settle(tester);
-    await tester.tap(find.byKey(retryDialogCancelKey));
-    await settle(tester);
-    expect(find.byType(RetryDialog), findsNothing);
-    expect(find.text('전체 · 30편'), findsOneWidget);
   });
 
   testWidgets('목록: BottomSheet 다중 선택 → 장르 ID 목록으로 요청', (tester) async {
@@ -400,11 +395,11 @@ void main() {
     await tester.tap(find.byKey(const Key('genreCheckbox-28')));
     await tester.tap(find.byKey(const Key('genreCheckbox-12')));
     await tester.pump();
-    expect(find.text('전체 · 30편'), findsOneWidget); // 확인 전에는 그대로
+    expect(find.text('전체 · 20편'), findsOneWidget); // 확인 전에는 그대로
     await tester.tap(find.byKey(applyFilterButtonKey));
     await settle(tester);
     expect(tmdb.discoverCalls.last.genreIds, [28, 12]);
-    expect(find.text('액션, 모험 · 30편'), findsOneWidget);
+    expect(find.text('액션, 모험 · 20편'), findsOneWidget);
 
     // 아무것도 고르지 않고 확인 → with_genres 없이 전체
     await tester.tap(find.byKey(filterButtonKey));
@@ -444,7 +439,7 @@ void main() {
     await settle(tester);
     await tester.tap(find.text('영화').last);
     await settle(tester);
-    expect(find.text('전체 · 30편'), findsOneWidget);
+    expect(find.text('전체 · 20편'), findsOneWidget);
     await tester.tap(find.text('마이페이지').last);
     await settle(tester);
     expect(find.text('내가 등록한 평점'), findsOneWidget);

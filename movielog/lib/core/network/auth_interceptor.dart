@@ -16,9 +16,18 @@ class AuthInterceptor extends Interceptor {
   final TokenStorage _storage;
   final Uri _base;
 
-  /// 보호 대상 경로. `/ratings/{id}`처럼 뒤에 붙는 경로도 포함한다.
-  static const protectedExactPaths = {'/members/me', '/ratings'};
-  static const protectedPrefix = '/ratings/';
+  /// 보호 대상 경로.
+  /// - 정확히 일치: 내 정보, 평점 등록, 즐겨찾기 등록·목록, 영화 기록 저장
+  /// - 접두사: `/ratings/{id}`, `/favorites/{movieId}`처럼 뒤에 붙는 경로
+  ///
+  /// 이 서버에는 `/v7`·`/v8` 접두사가 없어 워크북의 `/v8/...` 대신 접두사 없는 경로를 쓴다.
+  static const protectedExactPaths = {
+    '/members/me',
+    '/ratings',
+    '/favorites',
+    '/movie-records',
+  };
+  static const protectedPrefixes = ['/ratings/', '/favorites/'];
 
   bool isProtected(RequestOptions options) {
     final uri = options.uri;
@@ -34,7 +43,7 @@ class AuthInterceptor extends Interceptor {
     if (!uri.path.startsWith(basePath)) return false;
     final path = uri.path.substring(basePath.length);
     return protectedExactPaths.contains(path) ||
-        path.startsWith(protectedPrefix);
+        protectedPrefixes.any(path.startsWith);
   }
 
   @override

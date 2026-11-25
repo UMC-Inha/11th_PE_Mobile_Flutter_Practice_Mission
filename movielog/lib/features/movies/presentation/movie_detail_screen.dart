@@ -3,61 +3,106 @@ import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:go_router/go_router.dart';
 import 'package:movielog/core/theme/app_theme.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
+import 'package:movielog/features/movies/presentation/widgets/favorite_button.dart';
 import 'package:movielog/features/movies/presentation/widgets/movie_card.dart';
 import 'package:movielog/features/rating/presentation/widgets/movie_rating_dialog.dart';
+import 'package:movielog/view_models/favorite_detail_view_model.dart';
 import 'package:movielog/view_models/movie_detail_view_model.dart';
 import 'package:movielog/view_models/submit_status.dart';
 import 'package:movielog/widgets/tmdb_poster_image.dart';
 import 'package:provider/provider.dart';
 
-const favoriteButtonKey = Key('favoriteButton');
 const rateButtonKey = Key('rateButton');
 const tmdbIdLabelKey = Key('tmdbIdLabel');
 const myRatingLabelKey = Key('myRatingLabel');
+const movieTitleKey = Key('movieTitle');
 
-class MovieDetailScreen extends StatelessWidget {
+class MovieDetailScreen extends StatefulWidget {
   const MovieDetailScreen({super.key});
 
+  @override
+  State<MovieDetailScreen> createState() => _MovieDetailScreenState();
+}
+
+class _MovieDetailScreenState extends State<MovieDetailScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // 화면이 처음 만들어질 때 서버의 즐겨찾기 여부를 한 번만 조회한다(build에서 조회하지 않는다).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<FavoriteDetailViewModel>().load();
+    });
+  }
+
+  /// "평점 남기기". 서버에서 확인한 즐겨찾기 상태에 따라 저장 방식이 갈린다.
+  ///
+  /// - **아직 즐겨찾기하지 않은 영화**(여부를 서버에서 받았고 false): Dialog에 "즐겨찾기에도 추가" 체크박스를
+  ///   보여 주고, 평점과 즐겨찾기를 `POST /movie-records` 한 번으로 저장한다.
+  /// - 이미 즐겨찾기한 영화, 또는 여부를 아직 모르는 영화: 체크박스 없이 기존 `POST /ratings`로 저장한다.
   Future<void> _rate(
     BuildContext context,
     MovieDetailViewModel viewModel,
   ) async {
     final movie = viewModel.movie!;
+    final favorite = context.read<FavoriteDetailViewModel>();
+    final integrated = favorite.hasLoadedStatus && !favorite.isFavorite;
+    // 다시 눌러도 소용없는 실패(409·404)는 Dialog를 닫고 이 문구를 Snackbar로 안내한다.
+    String? closingNotice;
+
     final saved = await showMovieRatingDialog(
       context,
       movieTitle: movie.title,
-      onSubmit: (score, comment) async {
+      showAddToFavorite: integrated,
+      onSubmit: (score, comment, addToFavorites) async {
         // 저장은 Dialog 안에서 일어난다. 실패하면 서버 message를 Dialog에 보여주고 입력은 유지된다.
+        if (integrated) {
+          final result = await viewModel.saveMovieRecord(
+            score: score,
+            comment: comment,
+            addToFavorites: addToFavorites,
+          );
+          if (result.isSaved) return;
+          final message = result.message ?? '저장에 실패했습니다.';
+          if (result.closesDialog) {
+            closingNotice = message;
+            throw RatingSaveClosedException(message);
+          }
+          throw RatingSaveException(message);
+        }
         await viewModel.createRating(score: score, comment: comment);
         if (viewModel.submitStatus != SubmitStatus.success) {
           throw RatingSaveException(viewModel.submitMessage ?? '저장에 실패했습니다.');
         }
       },
     );
-    // Dialog가 저장까지 마치고 true를 돌려준 뒤에만 안내한다. await 뒤에는 mounted를 다시 확인한다.
-    if (!context.mounted || saved != true) return;
-    ScaffoldMessenger.of(context)
+    // await 뒤에는 mounted를 다시 확인한다.
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    if (integrated) {
+      // 저장하든 실패하든, 즐겨찾기 쪽 상태는 화면이 짐작한 값이 아니라 서버 값으로 다시 맞춘다.
+      final notice = closingNotice;
+      if (notice != null) {
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(notice)));
+        await favorite.load();
+        return;
+      }
+      if (saved == true) {
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('평점을 저장했습니다.')));
+        await favorite.load();
+      }
+      return;
+    }
+    // Dialog가 저장까지 마치고 true를 돌려준 뒤에만 안내한다.
+    if (saved != true) return;
+    messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
         const SnackBar(
           content: Text('평점을 등록했습니다. 마이페이지의 "내가 등록한 평점"에서 확인할 수 있습니다.'),
-        ),
-      );
-  }
-
-  void _toggleFavorite(BuildContext context, MovieDetailViewModel viewModel) {
-    viewModel.toggleFavorite();
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            viewModel.isFavorite ? '즐겨찾기에 추가했어요.' : '즐겨찾기에서 삭제했어요.',
-          ),
-          action: SnackBarAction(
-            label: '되돌리기',
-            onPressed: viewModel.toggleFavorite,
-          ),
         ),
       );
   }
@@ -73,18 +118,6 @@ class MovieDetailScreen extends StatelessWidget {
           onPressed: () =>
               context.canPop() ? context.pop() : context.go('/movies'),
         ),
-        actions: [
-          if (movie != null)
-            IconButton(
-              key: favoriteButtonKey,
-              tooltip: viewModel.isFavorite ? '즐겨찾기 삭제' : '즐겨찾기 추가',
-              onPressed: () => _toggleFavorite(context, viewModel),
-              icon: Icon(
-                viewModel.isFavorite ? Icons.bookmark : Icons.bookmark_border,
-                color: viewModel.isFavorite ? AppColors.primary : null,
-              ),
-            ),
-        ],
       ),
       body: switch (viewModel.status) {
         MovieDetailLoadStatus.loading => const Center(
@@ -181,21 +214,41 @@ class _PosterHeader extends StatelessWidget {
             width: double.infinity,
           ),
         ),
-        const SizedBox(height: 18),
-        Text(
-          movie.title,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: AppColors.text,
-            fontSize: 26,
-            fontWeight: FontWeight.w800,
-          ),
+        const SizedBox(height: 14),
+        // 제목·개봉 연도 오른쪽에 즐겨찾기(북마크) 버튼을 둔다.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      movie.title,
+                      key: movieTitleKey,
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    // 개봉일이 없으면 연도를 표시하지 않는다.
+                    if (year != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        '$year 개봉',
+                        style: const TextStyle(color: AppColors.mutedText),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const FavoriteButton(),
+          ],
         ),
-        // 개봉일이 없으면 연도를 표시하지 않는다.
-        if (year != null) ...[
-          const SizedBox(height: 6),
-          Text('$year 개봉', style: const TextStyle(color: AppColors.mutedText)),
-        ],
       ],
     );
   }
