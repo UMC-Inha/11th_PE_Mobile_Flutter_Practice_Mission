@@ -15,9 +15,7 @@ class TmdbMovieService {
       '/movie/popular',
       queryParameters: {'language': 'ko-KR', 'page': page},
     );
-    return TmdbMoviePageDto.fromJson(
-      response.data as Map<String, dynamic>,
-    );
+    return TmdbMoviePageDto.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<TmdbMoviePageDto> discoverMovies({
@@ -35,9 +33,24 @@ class TmdbMovieService {
         'with_genres': ?genreId,
       },
     );
-    return TmdbMoviePageDto.fromJson(
-      response.data as Map<String, dynamic>,
+    return TmdbMoviePageDto.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Search: 검색어가 비어 있으면 호출하지 않습니다(ViewModel에서 먼저 막습니다).
+  Future<TmdbMoviePageDto> searchMovies({
+    required int page,
+    required String query,
+  }) async {
+    final response = await _dio.get(
+      '/search/movie',
+      queryParameters: {
+        'query': query,
+        'page': page,
+        'language': 'ko-KR',
+        'include_adult': false,
+      },
     );
+    return TmdbMoviePageDto.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<List<TmdbGenreDto>> fetchGenres() async {

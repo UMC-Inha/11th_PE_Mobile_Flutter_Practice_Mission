@@ -30,7 +30,7 @@ class FakeRatingApiService extends RatingApiService {
   @override
   Future<RatingDto> createRating(CreateRatingRequest request) async {
     createRequests.add(request.toJson());
-    await _beforeWrite('/v7/ratings');
+    await _beforeWrite('/v8/ratings');
     final created = RatingDto(
       ratingId: _nextRatingId++,
       movieId: request.movieId,
@@ -49,7 +49,7 @@ class FakeRatingApiService extends RatingApiService {
     String? comment,
   }) async {
     updateRequests.add({'ratingId': ratingId, 'score': score, 'comment': comment});
-    await _beforeWrite('/v7/ratings/$ratingId');
+    await _beforeWrite('/v8/ratings/$ratingId');
     final index = ratings.indexWhere((r) => r.ratingId == ratingId);
     final old = ratings[index];
     return ratings[index] = RatingDto(
@@ -64,7 +64,7 @@ class FakeRatingApiService extends RatingApiService {
   @override
   Future<void> deleteRating(int ratingId) async {
     deleteRequests.add(ratingId);
-    await _beforeWrite('/v7/ratings/$ratingId');
+    await _beforeWrite('/v8/ratings/$ratingId');
     ratings.removeWhere((r) => r.ratingId == ratingId);
   }
 

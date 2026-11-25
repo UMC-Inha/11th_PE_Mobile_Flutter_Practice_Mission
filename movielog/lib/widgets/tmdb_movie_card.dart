@@ -11,14 +11,13 @@ import 'tmdb_poster_image.dart';
 /// TMDB 영화 DTO를 표시하는 카드입니다.
 /// 카드를 누르면 TMDB `id`를 Path Parameter로, DTO를 extra로 넘겨 상세 화면을 push합니다.
 class TmdbMovieCard extends StatelessWidget {
-  const TmdbMovieCard({
-    super.key,
-    required this.movie,
-    this.width,
-  });
+  const TmdbMovieCard({super.key, required this.movie, this.width, this.onTap});
 
   final TmdbMovieDto movie;
   final double? width;
+
+  /// null이면 상세 화면을 push합니다. 상세에서 돌아온 뒤 할 일이 있으면 화면이 직접 넘깁니다.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +25,7 @@ class TmdbMovieCard extends StatelessWidget {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => context.push('/movies/${movie.id}', extra: movie),
+      onTap: onTap ?? () => context.push('/movies/${movie.id}', extra: movie),
       child: SizedBox(
         width: width,
         child: Column(
@@ -68,7 +67,9 @@ class TmdbMovieCard extends StatelessWidget {
                 releaseYear,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.bodySmall.copyWith(color: AppColors.darkGray),
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.darkGray,
+                ),
               ),
             ],
           ],

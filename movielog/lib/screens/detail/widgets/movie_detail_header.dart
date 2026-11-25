@@ -13,12 +13,16 @@ class MovieDetailHeader extends StatelessWidget {
     super.key,
     required this.movie,
     required this.myRating,
+    this.trailing,
   });
 
   final TmdbMovieDto movie;
 
   /// 내가 남긴 서버 평점(1~5 정수)입니다.
   final int? myRating;
+
+  /// 제목·정보 텍스트 오른쪽에 둘 위젯입니다. (즐겨찾기 북마크 버튼)
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -37,31 +41,39 @@ class MovieDetailHeader extends StatelessWidget {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                movie.title,
-                style: AppTextStyles.titleLarge.copyWith(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w600,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      movie.title,
+                      style: AppTextStyles.titleLarge.copyWith(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    // release_date가 없으면 개봉 연도를 표시하지 않습니다.
+                    if (releaseYear != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        releaseYear,
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: AppColors.darkGray,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    MovieRatingSummary(
+                      averageRating: movie.fivePointRating,
+                      myRating: myRating,
+                    ),
+                  ],
                 ),
               ),
-              // release_date가 없으면 개봉 연도를 표시하지 않습니다.
-              if (releaseYear != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  releaseYear,
-                  style: AppTextStyles.bodySmall.copyWith(
-                    color: AppColors.darkGray,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              MovieRatingSummary(
-                averageRating: movie.fivePointRating,
-                myRating: myRating,
-              ),
+              if (trailing != null) ...[const SizedBox(width: 8), trailing!],
             ],
           ),
         ),

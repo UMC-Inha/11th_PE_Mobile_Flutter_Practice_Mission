@@ -176,7 +176,7 @@ void main() {
     expect(app.scrollBehavior!.dragDevices, contains(PointerDeviceKind.mouse));
   });
 
-  testWidgets('상세 화면에서 평점 Dialog와 즐겨찾기 Snackbar가 동작한다', (WidgetTester tester) async {
+  testWidgets('상세 화면에서 평점 Dialog가 동작한다', (WidgetTester tester) async {
     _usePhoneSize(tester, width: 400, height: 900);
     final movie = FakeTmdbMovieService().movie(550);
     final auth = (await tester.runAsync(signedInAuth))!;
@@ -193,10 +193,8 @@ void main() {
     // overview가 비어 있으면 안내 문구를 보여줍니다.
     expect(find.text('줄거리 정보가 없어요.'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.bookmark_border));
-    await tester.pump();
-    expect(find.byIcon(Icons.bookmark), findsOneWidget);
-    expect(find.text("'영화 550'을(를) 즐겨찾기에 추가했어요."), findsOneWidget);
+    // 3주차 mock 즐겨찾기 버튼은 제거되었습니다. (서버 연동 북마크는 favorite_test.dart에서 확인)
+    expect(find.widgetWithText(OutlinedButton, '즐겨찾기'), findsNothing);
 
     await tester.tap(find.text('평점 남기기'));
     await tester.pumpAndSettle();

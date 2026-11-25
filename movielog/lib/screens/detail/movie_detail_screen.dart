@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/models/tmdb_movie_dto.dart';
 import '../../data/services/rating_api_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
+import '../../view_models/favorite_detail_view_model.dart';
 import '../../view_models/movie_detail_view_model.dart';
 import '../../widgets/common_app_bar.dart';
+import '../../widgets/favorite_button.dart';
 import 'widgets/detail_action_bar.dart';
 import 'widgets/movie_detail_header.dart';
 import 'widgets/movie_synopsis.dart';
@@ -23,8 +24,19 @@ class MovieDetailScreen extends StatefulWidget {
 }
 
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
-  // 즐겨찾기는 API 없이 화면 내부 상태로만 관리합니다.
-  bool _isFavorite = false;
+  /// Route에서 즐겨찾기 ViewModel을 제공했을 때만 북마크 버튼을 보여줍니다.
+  /// (상세 화면만 단독으로 띄우는 위젯 테스트에서는 없을 수 있습니다.)
+  FavoriteDetailViewModel? get _favoriteViewModel =>
+      Provider.of<FavoriteDetailViewModel?>(context, listen: false);
+
+  @override
+  void initState() {
+    super.initState();
+    // build()에서는 조회하지 않고, 화면이 처음 만들어질 때 서버의 즐겨찾기 여부를 한 번 조회합니다.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _favoriteViewModel?.load();
+    });
+  }
 
   static final _titleStyle = AppTextStyles.titleLarge.copyWith(
     color: AppColors.violet,
@@ -50,15 +62,6 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           duration: const Duration(seconds: 3),
         ),
       );
-  }
-
-  void _toggleFavorite(TmdbMovieDto movie) {
-    setState(() => _isFavorite = !_isFavorite);
-    _showSnackBar(
-      _isFavorite
-          ? '\'${movie.title}\'을(를) 즐겨찾기에 추가했어요.'
-          : '\'${movie.title}\'을(를) 즐겨찾기에서 삭제했어요.',
-    );
   }
 
   Future<void> _openRatingDialog() async {
@@ -131,6 +134,10 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                     MovieDetailHeader(
                       movie: movie,
                       myRating: viewModel.myScore,
+                      // 제목·정보 텍스트 오른쪽에 북마크 버튼을 둡니다.
+                      trailing: _favoriteViewModel == null
+                          ? null
+                          : const FavoriteButton(),
                     ),
                     const Divider(height: 1, color: AppColors.divider),
                     MovieSynopsis(synopsis: movie.overview),
@@ -138,11 +145,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                 ),
               ),
             ),
-            DetailActionBar(
-              isFavorite: _isFavorite,
-              onFavoritePressed: () => _toggleFavorite(movie),
-              onRatePressed: _openRatingDialog,
-            ),
+            DetailActionBar(onRatePressed: _openRatingDialog),
           ],
         ),
       ),

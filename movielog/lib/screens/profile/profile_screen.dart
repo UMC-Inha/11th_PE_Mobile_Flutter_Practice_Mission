@@ -64,6 +64,19 @@ class ProfileScreen extends StatelessWidget {
                 onTap: () => context.push('/my/ratings'),
               ),
               const Divider(color: AppColors.divider),
+              // 내 정보(member)가 준비된 뒤에만 진입할 수 있습니다.
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                enabled: member != null,
+                leading: const Icon(
+                  Icons.bookmark_outline,
+                  color: AppColors.violet,
+                ),
+                title: const Text('내 즐겨찾기', style: AppTextStyles.titleMedium),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/my/favorites'),
+              ),
+              const Divider(color: AppColors.divider),
             ],
           ),
         ),

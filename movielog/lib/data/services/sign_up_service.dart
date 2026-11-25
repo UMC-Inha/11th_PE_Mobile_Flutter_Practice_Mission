@@ -5,7 +5,7 @@ import '../models/common_response.dart';
 import '../models/create_member_request.dart';
 import '../models/sign_up_models.dart';
 
-/// 워크북 v6 회원 API를 호출합니다. (구 MemberCheckService)
+/// 워크북 v8 회원 API를 호출합니다. (구 MemberCheckService)
 class SignUpService {
   SignUpService(this._dio);
   final Dio _dio;
@@ -14,7 +14,7 @@ class SignUpService {
   /// 성공 응답은 공통 형식 없이 `{ "available": true }`를 그대로 반환합니다.
   Future<bool> checkNickname(String nickname) async {
     final encoded = Uri.encodeComponent(nickname.trim());
-    final response = await _dio.get('/v6/members/nickname/$encoded');
+    final response = await _dio.get('/v8/members/nickname/$encoded');
     return CheckResult.fromJson(response.data as Map<String, dynamic>)
         .available;
   }
@@ -22,7 +22,7 @@ class SignUpService {
   /// 이메일을 사용할 수 있으면 true를 반환합니다.
   Future<bool> checkEmail(String email) async {
     final encoded = Uri.encodeComponent(email.trim());
-    final response = await _dio.get('/v6/members/email/$encoded');
+    final response = await _dio.get('/v8/members/email/$encoded');
     return CheckResult.fromJson(response.data as Map<String, dynamic>)
         .available;
   }
@@ -31,7 +31,7 @@ class SignUpService {
   Future<CommonResponse<SignUpResult>> signUp(
     CreateMemberRequest request,
   ) async {
-    final response = await _dio.post('/v6/members', data: request.toJson());
+    final response = await _dio.post('/v8/members', data: request.toJson());
 
     return CommonResponse<SignUpResult>.fromJson(
       response.data as Map<String, dynamic>,
