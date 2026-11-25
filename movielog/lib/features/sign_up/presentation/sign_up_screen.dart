@@ -7,7 +7,6 @@ import 'package:movielog/features/rating/presentation/widgets/rating_practice_ca
 import 'package:movielog/features/sign_up/presentation/widgets/duplicate_check_field.dart';
 import 'package:movielog/features/sign_up/presentation/widgets/movie_log_text_form_field.dart';
 import 'package:movielog/features/sign_up/presentation/widgets/terms_agreement_tile.dart';
-import 'package:movielog/view_models/learning_member_session.dart';
 import 'package:movielog/view_models/sign_up_view_model.dart';
 import 'package:movielog/view_models/submit_status.dart';
 import 'package:movielog/widgets/movielog_button.dart';
@@ -74,8 +73,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     FocusScope.of(context).unfocus();
     final viewModel = context.read<SignUpViewModel>();
-    final session = context.read<LearningMemberSession>();
-    final nickname = _nicknameController.text.trim();
     await viewModel.submit(
       CreateMemberRequest(
         email: _emailController.text,
@@ -86,15 +83,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
     // await 뒤에는 화면이 이미 사라졌을 수 있다.
     if (!mounted) return;
 
-    final createdId = viewModel.createdMemberId;
-    if (viewModel.submitStatus == SubmitStatus.success && createdId != null) {
-      // 가입 결과의 memberId를 학습용 세션에 보관해 영화 상세·마이페이지가 읽게 한다.
-      session.setMemberId(createdId);
+    final createdEmail = viewModel.createdEmail;
+    if (viewModel.submitStatus == SubmitStatus.success &&
+        createdEmail != null) {
+      // 가입은 로그인이 아니다. 로그인 화면으로 보내고 이메일만 미리 채운다(비밀번호는 넘기지 않는다).
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('$nickname님, 가입을 환영해요!')));
-      // go: 회원가입 화면을 스택에서 지워 영화 목록에서 뒤로 가도 돌아오지 않는다.
-      context.go(AppRoutes.movies);
+        ..showSnackBar(const SnackBar(content: Text('가입이 완료됐어요. 로그인해 주세요.')));
+      // go: 회원가입 화면을 스택에서 지워 로그인 화면에서 뒤로 가도 돌아오지 않는다.
+      context.go(AppRoutes.login, extra: createdEmail);
       return;
     }
 

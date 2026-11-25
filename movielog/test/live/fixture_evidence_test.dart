@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:movielog/app/app_router.dart';
-import 'package:movielog/app/movie_log_app.dart';
 import 'package:movielog/data/models/tmdb_movie_page.dart';
 
 import '../support.dart';
@@ -29,16 +28,16 @@ void main() {
         await tester.pumpWidget(
           RepaintBoundary(
             key: boundaryKey,
-            child: MovieLogApp(
+            // 저장된 토큰이 있고 서버도 인정하는 상태로 시작해 세션 복원 뒤 영화 목록으로 간다.
+            child: AppHarness().app(
               key: ValueKey(name),
               initialLocation: AppRoutes.movies,
               tmdbService: service,
-              movieLogApiService: FakeMovieLogApiService(),
-              preferences: MemoryMoviePreferences(),
             ),
           ),
         );
-        await tester.pump(const Duration(seconds: 2));
+        await tester.pump(const Duration(seconds: 2)); // 세션 복원 → 목록 화면 생성
+        await tester.pump(const Duration(seconds: 2)); // 가짜 TMDB 응답 지연
         await tester.pumpAndSettle();
         await tester.runAsync(
           () => saveBoundary(boundaryKey, 'evidence/week05/$name.png'),

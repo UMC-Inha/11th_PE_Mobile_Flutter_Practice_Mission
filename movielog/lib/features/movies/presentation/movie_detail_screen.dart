@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:go_router/go_router.dart';
-import 'package:movielog/app/app_router.dart';
 import 'package:movielog/core/theme/app_theme.dart';
 import 'package:movielog/data/models/tmdb_movie_dto.dart';
 import 'package:movielog/features/movies/presentation/widgets/movie_card.dart';
@@ -15,8 +14,6 @@ const favoriteButtonKey = Key('favoriteButton');
 const rateButtonKey = Key('rateButton');
 const tmdbIdLabelKey = Key('tmdbIdLabel');
 const myRatingLabelKey = Key('myRatingLabel');
-const needSignUpHintKey = Key('needSignUpHint');
-const goSignUpButtonKey = Key('goSignUpButton');
 
 class MovieDetailScreen extends StatelessWidget {
   const MovieDetailScreen({super.key});
@@ -142,7 +139,7 @@ class MovieDetailScreen extends StatelessWidget {
             ],
             FilledButton.icon(
               key: rateButtonKey,
-              // 회원가입으로 얻은 memberId가 없으면 어느 회원의 평점인지 알 수 없어 비활성화한다.
+              // 로그인 세션이 정리되는 순간에는 등록할 수 없다(보호 요청은 토큰이 필요하다).
               onPressed: viewModel.canRate
                   ? () => _rate(context, viewModel)
                   : null,
@@ -152,20 +149,6 @@ class MovieDetailScreen extends StatelessWidget {
                 minimumSize: const Size.fromHeight(54),
               ),
             ),
-            if (!viewModel.canRate) ...[
-              const SizedBox(height: 8),
-              const Text(
-                '먼저 학습용 회원가입을 완료해 주세요.',
-                key: needSignUpHintKey,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.mutedText),
-              ),
-              TextButton(
-                key: goSignUpButtonKey,
-                onPressed: () => context.go(AppRoutes.signUp),
-                child: const Text('회원가입 하러 가기'),
-              ),
-            ],
             const SizedBox(height: 12),
             Text(
               'TMDB 영화 ID ${movie.id}',

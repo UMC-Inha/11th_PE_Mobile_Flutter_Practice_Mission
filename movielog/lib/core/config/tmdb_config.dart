@@ -5,6 +5,15 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 abstract final class TmdbConfig {
   static const accessTokenKey = 'TMDB_ACCESS_TOKEN';
 
+  /// 테스트·로컬 검증용으로 TMDB 주소를 바꿔 끼울 때 쓴다. 비어 있으면 실제 TMDB다.
+  static const baseUrlKey = 'TMDB_API_BASE_URL';
+  static const defaultBaseUrl = 'https://api.themoviedb.org/3';
+
+  static String get baseUrl {
+    final value = readEnv(baseUrlKey);
+    return value.isEmpty ? defaultBaseUrl : value;
+  }
+
   /// TMDB API Read Access Token. 로그·화면에 원문을 남기지 않는다.
   static String get accessToken => readEnv(accessTokenKey);
 
